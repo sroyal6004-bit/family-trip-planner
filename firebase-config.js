@@ -14,10 +14,10 @@
 //   4) 나오는 firebaseConfig 값을 아래에 그대로 붙여넣기
 // ─────────────────────────────────────────────────────────────
 window.FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyD9MENjz8a547N04mZSYrGRua7R_7kFKwY",
+  authDomain: "sapporo-travel-fb56a.firebaseapp.com",
+  projectId: "sapporo-travel-fb56a",
+  storageBucket: "sapporo-travel-fb56a.firebasestorage.app",
+  messagingSenderId: "158423848542",
+  appId: "1:158423848542:web:11b8312fcb64bc090906cf"
 };
