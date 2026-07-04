@@ -1,0 +1,15 @@
+# Netlify 배포 설정 — 정적 사이트 (빌드 과정 없음)
+[build]
+  publish = "."
+  command = ""
+
+# 서비스워커/설정 파일은 항상 최신을 받도록 캐시 무효화
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/firebase-config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
