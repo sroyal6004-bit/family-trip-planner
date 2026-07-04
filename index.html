@@ -523,9 +523,23 @@
 <!-- 경비 추가/수정 시트 -->
 <div class="sheet" id="sheetExp">
   <div class="sheet-title"><span id="sheetExpTitle">경비 추가</span><button class="sheet-close" data-close>×</button></div>
-  <div class="field-row">
-    <div class="field"><label>날짜</label><select id="eDate"></select></div>
-    <div class="field"><label>금액 (원)</label><input type="text" inputmode="numeric" id="eAmount" placeholder="0"/></div>
+  <div class="field"><label>날짜</label><select id="eDate"></select></div>
+  <div class="field">
+    <label>금액</label>
+    <div style="display:flex; gap:8px">
+      <select id="eCurrency" style="width:128px; flex:0 0 auto"></select>
+      <input type="text" inputmode="decimal" id="eAmount" placeholder="0" style="flex:1"/>
+    </div>
+  </div>
+  <div class="field" id="eForexRow" style="display:none">
+    <label>환율 · 수수료</label>
+    <div style="display:flex; gap:8px; align-items:center">
+      <span id="eRatePrefix" style="font-size:13px; color:var(--muted); white-space:nowrap">1 =</span>
+      <input type="text" inputmode="decimal" id="eRate" placeholder="환율" style="flex:1"/>
+      <span style="font-size:13px; color:var(--muted); white-space:nowrap">원</span>
+    </div>
+    <div class="chip-row" id="eFeeChips" style="margin-top:9px"></div>
+    <div id="eConverted" style="font-size:12px; color:var(--accent); margin-top:9px; font-family:var(--mono); line-height:1.5"></div>
   </div>
   <div class="field">
     <label>분류</label>
@@ -633,6 +647,19 @@ const EXP_CATS = [
   ['food','🍽️ 식비'], ['stay','🏨 숙박'], ['move','⛽ 교통'],
   ['tour','🎟️ 관광'], ['shop','🛍️ 쇼핑'], ['etc','💸 기타']
 ];
+// 통화 (경비 금액 입력용) — 원화 외 선택 시 환율×수수료로 원화 환산
+const CURRENCIES = [
+  { c:'KRW', label:'🇰🇷 원 (KRW)', sym:'₩' },
+  { c:'JPY', label:'🇯🇵 엔 (JPY)', sym:'¥' },
+  { c:'USD', label:'🇺🇸 달러 (USD)', sym:'$' },
+  { c:'CNY', label:'🇨🇳 위안 (CNY)', sym:'元' },
+  { c:'HKD', label:'🇭🇰 홍콩달러 (HKD)', sym:'HK$' },
+  { c:'EUR', label:'🇪🇺 유로 (EUR)', sym:'€' },
+  { c:'SGD', label:'🇸🇬 싱가포르달러 (SGD)', sym:'S$' }
+];
+const CUR_SYM = Object.fromEntries(CURRENCIES.map(x => [x.c, x.sym]));
+const DEFAULT_RATES = { JPY:9, USD:1350, CNY:190, HKD:173, EUR:1450, SGD:1010 };  // 대략값(수정 가능·자동조회로 갱신)
+const rateCache = {};
 const catEmoji = (cats, key) => { const f = cats.find(c => c[0] === key); return f ? f[1].split(' ')[0] : '📌'; };
 const catLabel = (cats, key) => { const f = cats.find(c => c[0] === key); return f ? f[1] : '📌 기타'; };
 
@@ -1184,7 +1211,7 @@ function renderExpenseTab(t, body) {
             <span class="exp-cat">${catEmoji(EXP_CATS, e.cat)}</span>
             <div class="exp-body">
               <div class="exp-title">${esc(e.title)}</div>
-              <div class="exp-sub">${e.payerId === FUND ? '🏦 공금' : esc(memberName(t, e.payerId))} 결제 · ${e.splitIds.length}명 분담</div>
+              <div class="exp-sub">${e.payerId === FUND ? '🏦 공금' : esc(memberName(t, e.payerId))} 결제 · ${e.splitIds.length}명 분담${e.currency && e.currency !== 'KRW' ? ` · ${CUR_SYM[e.currency]||''}${fmtOrig(e.origAmount)}${e.feePct ? ` +${e.feePct}%` : ''}` : ''}</div>
             </div>
             <span class="exp-amt">${fmt(e.amount)}원</span>
             <button class="exp-addphoto" data-addphoto-exp="${e.id}" title="영수증 사진">📷</button>
@@ -1638,10 +1665,73 @@ $('sDelete').addEventListener('click', () => {
 let expCat = 'food';
 let expPayerId = null;
 let expSplitIds = [];
-$('eAmount').addEventListener('input', e => {
-  const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 10);
-  e.target.value = raw ? Number(raw).toLocaleString('ko-KR') : '';
-});
+let eFeePct = 0;
+
+function parseNum(str) { return parseFloat(String(str).replace(/[^\d.]/g, '')) || 0; }
+function fmtNumInput(v) {
+  v = String(v).replace(/[^\d.]/g, '');
+  const i = v.indexOf('.');
+  if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
+  let [a, b] = v.split('.');
+  a = a ? Number(a).toLocaleString('ko-KR') : (b !== undefined ? '0' : '');
+  return b !== undefined ? a + '.' + b.slice(0, 2) : a;
+}
+function fmtOrig(n) {
+  const r = Math.round((n || 0) * 100) / 100;
+  return Number.isInteger(r) ? r.toLocaleString('ko-KR')
+    : r.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function populateCurrencies() {
+  if ($('eCurrency').options.length) return;
+  $('eCurrency').innerHTML = CURRENCIES.map(x => `<option value="${x.c}">${x.label}</option>`).join('');
+}
+function updateConverted() {
+  const c = $('eCurrency').value;
+  if (c === 'KRW') { $('eForexRow').style.display = 'none'; return; }
+  $('eForexRow').style.display = '';
+  $('eRatePrefix').textContent = `1 ${c} =`;
+  const orig = parseNum($('eAmount').value), rate = parseNum($('eRate').value);
+  const krw = orig * rate * (1 + eFeePct / 100);
+  $('eConverted').textContent = (orig && rate)
+    ? `≈ ${fmt(krw)}원${eFeePct ? ` (수수료 ${eFeePct}% 포함)` : ''}`
+    : '금액과 환율을 입력하면 원화로 환산돼요';
+}
+function renderFeeChips() {
+  $('eFeeChips').innerHTML = [0,1,2,3].map(f =>
+    `<span class="chip ${eFeePct===f?'on':''}" data-fee="${f}">수수료 ${f}%</span>`).join('');
+  $('eFeeChips').querySelectorAll('[data-fee]').forEach(c =>
+    c.addEventListener('click', () => { eFeePct = Number(c.dataset.fee); renderFeeChips(); updateConverted(); }));
+}
+async function fetchAndFillRate(c) {
+  try {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${c}&to=KRW`);
+    const j = await res.json();
+    const rate = j && j.rates && j.rates.KRW;
+    if (rate) {
+      rateCache[c] = rate;
+      if ($('eCurrency').value === c && $('eRate').dataset.auto === '1') {
+        $('eRate').value = fmtNumInput(String(Math.round(rate * 100) / 100));
+        updateConverted();
+      }
+    }
+  } catch (e) {}
+}
+function syncForex(prefillRate) {
+  const c = $('eCurrency').value;
+  if (c === 'KRW') { $('eForexRow').style.display = 'none'; return; }
+  if (prefillRate != null) { $('eRate').value = fmtNumInput(String(prefillRate)); $('eRate').dataset.auto = '0'; }
+  else {
+    const def = rateCache[c] || DEFAULT_RATES[c] || '';
+    $('eRate').value = def ? fmtNumInput(String(def)) : '';
+    $('eRate').dataset.auto = '1';
+    fetchAndFillRate(c);
+  }
+  renderFeeChips();
+  updateConverted();
+}
+$('eAmount').addEventListener('input', e => { e.target.value = fmtNumInput(e.target.value); updateConverted(); });
+$('eRate').addEventListener('input', e => { e.target.value = fmtNumInput(e.target.value); e.target.dataset.auto = '0'; updateConverted(); });
+$('eCurrency').addEventListener('change', () => syncForex(null));
 function openExpSheet(expId) {
   const t = cur();
   editExpId = expId;
@@ -1652,7 +1742,14 @@ function openExpSheet(expId) {
   const today = dstr(new Date());
   $('eDate').innerHTML = days.map((d,i) => `<option value="${d}">Day ${i+1} · ${fmtDate(d)}</option>`).join('');
   $('eDate').value = ex ? ex.date : (days.includes(today) ? today : days[0]);
-  $('eAmount').value = ex ? Number(ex.amount).toLocaleString('ko-KR') : '';
+  populateCurrencies();
+  const c = ex ? (ex.currency || 'KRW') : 'KRW';
+  $('eCurrency').value = c;
+  eFeePct = ex ? (ex.feePct || 0) : 0;
+  const shown = ex ? (c !== 'KRW' ? (ex.origAmount != null ? ex.origAmount : ex.amount) : ex.amount) : '';
+  $('eAmount').value = shown !== '' ? fmtNumInput(String(shown)) : '';
+  if (c !== 'KRW') syncForex(ex ? ex.rate : null);
+  else $('eForexRow').style.display = 'none';
   $('eTitle').value = ex ? ex.title : '';
   expCat = ex ? ex.cat : 'food';
   expPayerId = ex ? ex.payerId : t.members[0].id;
@@ -1683,14 +1780,22 @@ function renderExpChips(t) {
 }
 $('eSave').addEventListener('click', () => {
   const t = cur();
-  const amount = Number($('eAmount').value.replace(/[^\d]/g, ''));
+  const c = $('eCurrency').value;
+  const orig = parseNum($('eAmount').value);
   const title = $('eTitle').value.trim();
-  if (!amount) { toast('금액을 입력해 주세요'); return; }
+  if (!orig) { toast('금액을 입력해 주세요'); return; }
   if (!title) { toast('내용을 입력해 주세요'); return; }
   if (!expPayerId) { toast('결제한 사람/방법을 선택해 주세요'); return; }
   if (!expSplitIds.length) { toast('함께 나눌 사람을 1명 이상 선택해 주세요'); return; }
-  const item = { id: editExpId || uid(), date: $('eDate').value, amount, title, cat: expCat,
-    payerId: expPayerId, splitIds: [...expSplitIds] };
+  let rate = 1, fee = 0, amount = orig;
+  if (c !== 'KRW') {
+    rate = parseNum($('eRate').value); fee = eFeePct;
+    if (!rate) { toast('환율을 입력해 주세요'); return; }
+    amount = orig * rate * (1 + fee / 100);
+  }
+  const item = { id: editExpId || uid(), date: $('eDate').value, amount: Math.round(amount), title, cat: expCat,
+    payerId: expPayerId, splitIds: [...expSplitIds],
+    currency: c, origAmount: orig, rate, feePct: fee };
   if (editExpId) t.expenses = t.expenses.map(e => e.id === editExpId ? item : e);
   else t.expenses.push(item);
   save(); syncPush(t); closeSheets(); render();
