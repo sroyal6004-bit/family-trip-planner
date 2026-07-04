@@ -719,10 +719,16 @@ async function joinByCode(code) {
     closeSheets(); render();
     toast(`"${data.name}" 여행에 참여했어요!`);
   } catch (e) {
-    const denied = e && (e.code === 'permission-denied' || /permission|insufficient/i.test(e.message || ''));
-    joinStatus(denied
-      ? '⚠️ Firestore 보안 규칙에서 막혀 있어요. 규칙을 열어야 참여할 수 있어요.'
-      : '오류가 발생했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.', 'var(--red)');
+    const code = (e && e.code) || '';
+    const msg = (e && e.message) || '';
+    const denied = code === 'permission-denied' || /permission|insufficient/i.test(msg);
+    const noDb = code === 'unavailable' || code === 'not-found' || code === 'failed-precondition'
+      || /database|firestore.*(not|없|does not exist)/i.test(msg);
+    let text;
+    if (denied) text = '⚠️ Firestore 보안 규칙에서 막혀 있어요. 규칙을 열어야 참여할 수 있어요.';
+    else if (noDb) text = '⚠️ Firestore 데이터베이스가 아직 없거나 연결이 안 돼요. Firebase에서 "Firestore Database 만들기"를 했는지 확인하세요.';
+    else text = '오류가 발생했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.';
+    joinStatus(`${text}  [${code || 'unknown'}]`, 'var(--red)');
   }
 }
 function enableCloud(t) {
