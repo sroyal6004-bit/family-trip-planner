@@ -6,9 +6,9 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <meta name="apple-mobile-web-app-title" content="가족여행"/>
+  <meta name="apple-mobile-web-app-title" content="우리 & 여행"/>
   <meta name="theme-color" content="#4cc3e8"/>
-  <title>가족 여행 플래너</title>
+  <title>우리 &amp; 여행</title>
   <link rel="manifest" href="./manifest.json"/>
   <link rel="icon" href="./icon-192.png"/>
   <style>
@@ -1007,14 +1007,19 @@ function renderHome() {
   fab.classList.remove('show');
   headerEl.innerHTML = `
     <div class="header-badge">Family Trip · PWA</div>
-    <div class="header-title">🧳 우리 가족 여행</div>
+    <div class="header-title">🧳 우리 &amp; 여행</div>
     <div class="header-sub">일정도 같이 보고, 쓴 돈도 같이 정산해요${cloudOn ? ' · ☁️ 실시간 공유' : ''}</div>`;
 
   const today = dstr(new Date());
   let html = '';
+  // 새 여행 만들기 / 여행 코드로 참여하기 — 항상 맨 위
+  html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
+  if (cloudOn) html += `<button class="add-btn ghost" id="joinTripBtn">🔗 여행 코드로 참여하기</button>`;
+
   if (!db.trips.length) {
-    html += `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>첫 가족 여행을 만들어 보세요!</div>`;
+    html += `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>위에서 첫 여행을 만들어 보세요!</div>`;
   } else {
+    html += `<div class="divider"><span class="divider-label">📋 내 여행</span><div class="divider-line"></div></div>`;
     const sorted = [...db.trips].sort((a,b) => b.startDate.localeCompare(a.startDate));
     for (const t of sorted) {
       const total = t.expenses.reduce((s,e) => s + e.amount, 0);
@@ -1041,8 +1046,6 @@ function renderHome() {
         </div>`;
     }
   }
-  html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
-  if (cloudOn) html += `<button class="add-btn ghost" id="joinTripBtn">🔗 여행 코드로 참여하기</button>`;
   mainEl.innerHTML = html;
 
   $('newTripBtn').addEventListener('click', () => openTripSheet(null));

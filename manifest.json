@@ -1,7 +1,7 @@
 {
-  "name": "가족 여행 플래너",
-  "short_name": "가족여행",
-  "description": "가족 여행 일정과 경비를 함께 기록하고 자동 정산하는 앱",
+  "name": "우리 & 여행",
+  "short_name": "우리&여행",
+  "description": "가족·친구 여행 일정과 경비를 함께 기록하고 자동 정산하는 앱",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
