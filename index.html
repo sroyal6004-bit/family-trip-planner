@@ -192,6 +192,34 @@
     }
     .tl-map:active { background: #0e2230; }
     .tl-cat { font-size: 16px; padding-top: 2px; }
+    .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
+    .tl-thumb {
+      width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
+      background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; display: block;
+    }
+    .tl-addphoto {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 0 10px; height: 56px; min-width: 56px; justify-content: center;
+      border-radius: 8px; background: var(--bg3); border: 1px dashed var(--border2);
+      color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; flex-direction: column;
+    }
+    .tl-addphoto:active { background: var(--bg2); }
+    .tl-addphoto .ic { font-size: 16px; }
+
+    /* ── Lightbox (사진 크게 보기) ── */
+    #lightbox {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.94); flex-direction: column;
+    }
+    #lightbox.show { display: flex; }
+    .lb-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px;
+    }
+    .lb-btn { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 6px 10px; line-height: 1; }
+    .lb-del { color: var(--red); font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+    .lb-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 8px calc(env(safe-area-inset-bottom, 0px) + 14px); }
+    .lb-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
 
     /* ── Expenses ── */
     .summary-card {
@@ -536,6 +564,16 @@
 
 <div class="toast" id="toast"></div>
 <input type="file" id="importFile" accept=".json,application/json" style="display:none"/>
+<input type="file" id="photoInput" accept="image/*" multiple style="display:none"/>
+
+<!-- 사진 크게 보기 -->
+<div id="lightbox">
+  <div class="lb-bar">
+    <button class="lb-btn lb-del" id="lbDelete">🗑 삭제</button>
+    <button class="lb-btn" id="lbClose">×</button>
+  </div>
+  <div class="lb-img-wrap"><img class="lb-img" id="lbImg" alt=""/></div>
+</div>
 
 <!-- Firebase (실시간 공유) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -561,10 +599,18 @@ let editExpId = null;
 // 클라우드 동기화 상태
 let cloudOn = false;
 let fdb = null;
-const subs = {};
+const subs = {};        // trips/{code} 문서 구독
+const photoSubs = {};   // trips/{code}/photos 컬렉션 구독
 let applyingRemote = false;
 
+// 사진(미디어) 상태
+let tripPhotos = [];        // 현재 열려있는 여행의 사진 목록
+let loadedPhotoCode = null; // tripPhotos가 어떤 여행(code) 것인지
+let lbPhotoId = null;       // 라이트박스에 열린 사진 id
+
 const FUND = 'FUND';
+const PHOTO_MAX_DIM = 1280;
+const PHOTO_TARGET_BYTES = 470000;   // 압축 목표(바이너리) — base64 포함 ~640KB로 Firestore 1MB 이내
 
 const SCH_CATS = [
   ['move','🚗 이동'], ['food','🍽️ 식사'], ['tour','🏞️ 관광'],
@@ -739,6 +785,159 @@ function enableCloud(t) {
   toast('실시간 공유를 켰어요! 가족에게 코드를 알려주세요');
 }
 
+// ═══════════════ 사진: IndexedDB(로컬) ═══════════════
+let _idb = null;
+function idbOpen() {
+  if (_idb) return Promise.resolve(_idb);
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('ftp-media', 1);
+    req.onupgradeneeded = () => {
+      const store = req.result.createObjectStore('photos', { keyPath: 'id' });
+      store.createIndex('byTrip', 'tripCode', { unique: false });
+    };
+    req.onsuccess = () => { _idb = req.result; res(_idb); };
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbPut(photo) {
+  const d = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = d.transaction('photos', 'readwrite');
+    tx.objectStore('photos').put(photo);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbDelete(id) {
+  const d = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = d.transaction('photos', 'readwrite');
+    tx.objectStore('photos').delete(id);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGetByTrip(tripCode) {
+  const d = await idbOpen();
+  return new Promise((res, rej) => {
+    const out = [];
+    const idx = d.transaction('photos', 'readonly').objectStore('photos').index('byTrip');
+    idx.openCursor(IDBKeyRange.only(tripCode)).onsuccess = e => {
+      const cur = e.target.result;
+      if (cur) { out.push(cur.value); cur.continue(); } else res(out);
+    };
+  });
+}
+
+// ═══════════════ 사진: 압축 ═══════════════
+function fileToDataURL(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+}
+function loadImage(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+async function compressImage(file) {
+  const url = await fileToDataURL(file);
+  const img = await loadImage(url);
+  let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const scale = Math.min(1, PHOTO_MAX_DIM / Math.max(w, h));
+  w = Math.max(1, Math.round(w * scale)); h = Math.max(1, Math.round(h * scale));
+  const canvas = document.createElement('canvas');
+  const draw = () => { canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h); };
+  draw();
+  let q = 0.72, out = canvas.toDataURL('image/jpeg', q), guard = 0;
+  while (out.length * 0.75 > PHOTO_TARGET_BYTES && guard++ < 8) {
+    if (q > 0.34) q -= 0.12;
+    else { w = Math.round(w * 0.85); h = Math.round(h * 0.85); draw(); q = 0.6; }
+    out = canvas.toDataURL('image/jpeg', q);
+  }
+  return out;
+}
+
+// ═══════════════ 사진: 클라우드 동기화 ═══════════════
+function photoCloudCopy(p) { return { id: p.id, schedId: p.schedId, data: p.data, createdAt: p.createdAt || 0 }; }
+function subscribePhotos(code) {
+  if (!cloudOn || !code || photoSubs[code]) return;
+  photoSubs[code] = fdb.collection('trips').doc(code).collection('photos').onSnapshot(snap => {
+    let changed = false;
+    snap.docChanges().forEach(ch => {
+      if (ch.doc.metadata.hasPendingWrites) return;  // 내 쓰기 반향 무시
+      const d = ch.doc.data();
+      if (ch.type === 'removed') {
+        idbDelete(d.id); if (loadedPhotoCode === code) tripPhotos = tripPhotos.filter(p => p.id !== d.id); changed = true;
+      } else {
+        const photo = { id: d.id, tripCode: code, schedId: d.schedId, data: d.data, createdAt: d.createdAt || 0 };
+        idbPut(photo);
+        if (loadedPhotoCode === code) {
+          const i = tripPhotos.findIndex(p => p.id === d.id);
+          if (i >= 0) tripPhotos[i] = photo; else tripPhotos.push(photo);
+        }
+        changed = true;
+      }
+    });
+    if (changed && view === 'trip' && currentTab === 'schedule') render();
+  }, err => console.warn('photo snapshot err', err));
+}
+function pushPhotoCloud(trip, photo) {
+  if (!cloudOn || !trip || !trip.cloud) return;
+  try { fdb.collection('trips').doc(trip.code).collection('photos').doc(photo.id).set(photoCloudCopy(photo)); }
+  catch (e) { console.warn('photo push failed', e); }
+}
+function deletePhotoCloud(code, id) {
+  if (!cloudOn || !code) return;
+  try { fdb.collection('trips').doc(code).collection('photos').doc(id).delete(); } catch (e) {}
+}
+
+// ═══════════════ 사진: 로드/추가/삭제 ═══════════════
+async function loadTripMedia(t) {
+  if (!t) return;
+  if (loadedPhotoCode === t.code) { if (t.cloud) subscribePhotos(t.code); return; }
+  loadedPhotoCode = t.code;
+  try { tripPhotos = await idbGetByTrip(t.code); } catch { tripPhotos = []; }
+  if (t.cloud) subscribePhotos(t.code);
+  if (view === 'trip' && currentTab === 'schedule') render();
+}
+function photosFor(schedId) {
+  return tripPhotos.filter(p => p.schedId === schedId).sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+}
+async function addPhotos(schedId, files) {
+  const t = cur(); if (!t) return;
+  const imgs = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) { toast('이미지 파일만 첨부할 수 있어요'); return; }
+  toast(imgs.length > 1 ? `사진 ${imgs.length}장 추가 중...` : '사진 추가 중...');
+  let ok = 0;
+  for (const f of imgs) {
+    try {
+      const data = await compressImage(f);
+      const photo = { id: uid(), tripCode: t.code, schedId, data, createdAt: Date.now() + ok };
+      await idbPut(photo);
+      tripPhotos.push(photo);
+      pushPhotoCloud(t, photo);
+      ok++;
+      render();
+    } catch (e) { console.warn('photo add failed', e); }
+  }
+  if (ok) toast(`사진 ${ok}장을 추가했어요`);
+  else toast('사진을 불러오지 못했어요 (형식 확인)');
+}
+async function deletePhoto(id) {
+  const t = cur();
+  const p = tripPhotos.find(x => x.id === id);
+  await idbDelete(id);
+  tripPhotos = tripPhotos.filter(x => x.id !== id);
+  if (p && t) deletePhotoCloud(t.code, id);
+  render();
+}
+async function deletePhotosForSched(schedId) {
+  const t = cur();
+  const list = tripPhotos.filter(p => p.schedId === schedId);
+  for (const p of list) { await idbDelete(p.id); if (t) deletePhotoCloud(t.code, p.id); }
+  tripPhotos = tripPhotos.filter(p => p.schedId !== schedId);
+}
+async function deleteAllTripMedia(t) {
+  const list = await idbGetByTrip(t.code).catch(() => []);
+  for (const p of list) { await idbDelete(p.id); if (t.cloud) deletePhotoCloud(t.code, p.id); }
+  if (loadedPhotoCode === t.code) tripPhotos = [];
+}
+
 // ═══════════════ DOM 참조 ═══════════════
 const $ = id => document.getElementById(id);
 const headerEl = $('header'), mainEl = $('main'), fab = $('fab'), overlay = $('overlay');
@@ -812,6 +1011,7 @@ function renderHome() {
 function renderTrip() {
   const t = cur();
   if (!t) { view = 'home'; render(); return; }
+  loadTripMedia(t);
 
   headerEl.innerHTML = `
     <div style="display:flex;align-items:flex-start">
@@ -867,6 +1067,10 @@ function renderScheduleTab(t, body) {
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
             <a class="tl-map" href="${esc(mapUrl(s.title))}" target="_blank" rel="noopener">🗺️ 지도에서 보기</a>
+            <div class="tl-photos">
+              ${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}
+              <button class="tl-addphoto" data-addphoto="${s.id}"><span class="ic">📷</span>사진</button>
+            </div>
           </div>
           <div class="tl-cat">${catEmoji(SCH_CATS, s.cat)}</div>
         </div>`).join('') : `<div class="empty" style="padding:20px">이 날은 아직 일정이 없어요</div>`}
@@ -880,9 +1084,18 @@ function renderScheduleTab(t, body) {
     c.addEventListener('click', () => { dayFilter = c.dataset.day; render(); }));
   body.querySelectorAll('[data-sch]').forEach(el =>
     el.addEventListener('click', e => {
-      if (e.target.closest('.tl-map')) return;   // 지도 링크는 그대로 열기
+      if (e.target.closest('.tl-map') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto')) return;
       openSchSheet(el.dataset.sch);
     }));
+  body.querySelectorAll('[data-addphoto]').forEach(b =>
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      photoTargetSched = b.dataset.addphoto;
+      $('photoInput').value = '';
+      $('photoInput').click();
+    }));
+  body.querySelectorAll('[data-photo]').forEach(im =>
+    im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
 }
 
 // ── 경비 탭 ──
@@ -1174,8 +1387,11 @@ function renderSettingsTab(t, body) {
   $('importBtn').addEventListener('click', () => $('importFile').click());
   $('editTripBtn').addEventListener('click', () => openTripSheet(t.id));
   $('deleteTripBtn').addEventListener('click', () => {
-    if (!confirm(`"${t.name}" 여행을 정말 삭제할까요?\n일정과 경비 기록이 모두 사라져요.\n(실시간 공유 중이면 가족의 목록에서도 사라집니다.)`)) return;
+    if (!confirm(`"${t.name}" 여행을 정말 삭제할까요?\n일정·경비·사진이 모두 사라져요.\n(실시간 공유 중이면 가족의 목록에서도 사라집니다.)`)) return;
     const code = t.cloud ? t.code : null;
+    deleteAllTripMedia(t);
+    if (photoSubs[t.code]) { photoSubs[t.code](); delete photoSubs[t.code]; }
+    loadedPhotoCode = null; tripPhotos = [];
     db.trips = db.trips.filter(x => x.id !== t.id);
     save(); if (code) syncDelete(code);
     view = 'home'; render();
@@ -1345,9 +1561,11 @@ $('sSave').addEventListener('click', () => {
 });
 $('sDelete').addEventListener('click', () => {
   const t = cur();
-  if (!confirm('이 일정을 삭제할까요?')) return;
-  t.schedule = t.schedule.filter(s => s.id !== editSchId);
+  if (!confirm('이 일정을 삭제할까요?\n첨부한 사진도 함께 삭제돼요.')) return;
+  const removedId = editSchId;
+  t.schedule = t.schedule.filter(s => s.id !== removedId);
   save(); syncPush(t); closeSheets(); render();
+  deletePhotosForSched(removedId);
 });
 
 // ═══════════════ 경비 시트 ═══════════════
@@ -1416,6 +1634,26 @@ $('eDelete').addEventListener('click', () => {
   if (!confirm('이 경비 기록을 삭제할까요?')) return;
   t.expenses = t.expenses.filter(e => e.id !== editExpId);
   save(); syncPush(t); closeSheets(); render();
+});
+
+// ═══════════════ 사진 첨부 · 라이트박스 ═══════════════
+let photoTargetSched = null;
+$('photoInput').addEventListener('change', e => {
+  const files = Array.from(e.target.files);   // 복사 후에 value 초기화 (초기화하면 원본 FileList가 비워짐)
+  e.target.value = '';
+  if (photoTargetSched && files.length) addPhotos(photoTargetSched, files);
+});
+function openLightbox(id) {
+  const p = tripPhotos.find(x => x.id === id);
+  if (!p) return;
+  lbPhotoId = id; $('lbImg').src = p.data; $('lightbox').classList.add('show');
+}
+function closeLightbox() { $('lightbox').classList.remove('show'); $('lbImg').src = ''; lbPhotoId = null; }
+$('lbClose').addEventListener('click', closeLightbox);
+$('lbDelete').addEventListener('click', () => {
+  if (!lbPhotoId) return;
+  if (!confirm('이 사진을 삭제할까요?')) return;
+  const id = lbPhotoId; closeLightbox(); deletePhoto(id);
 });
 
 // ═══════════════ 여행 코드 참여 입력 ═══════════════
