@@ -178,7 +178,7 @@
     .tl-item:active { background: var(--bg3); }
     .tl-time {
       font-family: var(--mono); font-size: 12px; color: var(--accent);
-      min-width: 44px; padding-top: 2px;
+      min-width: 58px; padding-top: 2px; white-space: nowrap;
     }
     .tl-body { flex: 1; min-width: 0; }
     .tl-title { font-size: 14px; font-weight: 500; }
@@ -448,9 +448,17 @@
 <!-- 일정 추가/수정 시트 -->
 <div class="sheet" id="sheetSch">
   <div class="sheet-title"><span id="sheetSchTitle">일정 추가</span><button class="sheet-close" data-close>×</button></div>
-  <div class="field-row">
-    <div class="field"><label>날짜</label><select id="sDate"></select></div>
-    <div class="field"><label>시간 (선택)</label><input type="time" id="sTime"/></div>
+  <div class="field">
+    <label>날짜</label>
+    <select id="sDate"></select>
+  </div>
+  <div class="field">
+    <label>시간 (선택)</label>
+    <div style="display:flex;gap:8px">
+      <select id="sAmpm" style="flex:1.3"></select>
+      <select id="sHour" style="flex:1"></select>
+      <select id="sMin" style="flex:1"></select>
+    </div>
   </div>
   <div class="field">
     <label>분류</label>
@@ -498,6 +506,21 @@
   <div class="sheet-actions">
     <button class="btn-danger" id="eDelete" style="display:none">삭제</button>
     <button class="btn-primary" id="eSave">저장</button>
+  </div>
+</div>
+
+<!-- 여행 코드로 참여 시트 -->
+<div class="sheet" id="sheetJoin">
+  <div class="sheet-title"><span>🔗 여행 코드로 참여</span><button class="sheet-close" data-close>×</button></div>
+  <div class="field">
+    <label>여행 코드 (6자리)</label>
+    <input id="joinCode" placeholder="예: ABC123" maxlength="6"
+           autocapitalize="characters" autocomplete="off" spellcheck="false"
+           style="text-transform:uppercase;letter-spacing:0.18em;font-family:var(--mono);font-size:20px;text-align:center"/>
+  </div>
+  <div id="joinStatus" style="font-size:12px;line-height:1.6;min-height:16px;color:var(--muted)"></div>
+  <div class="sheet-actions">
+    <button class="btn-primary" id="joinGo">참여하기</button>
   </div>
 </div>
 
@@ -606,6 +629,13 @@ function memberName(t, id) {
   return m ? m.name : '?';
 }
 function mapUrl(place) { return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place); }
+function fmtTime(hhmm) {
+  if (!hhmm) return '종일';
+  const [h, m] = hhmm.split(':').map(Number);
+  const ampm = h < 12 ? '오전' : '오후';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${ampm} ${h12}:${String(m).padStart(2,'0')}`;
+}
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
@@ -659,22 +689,41 @@ function startSync() {
   if (!cloudOn) return;
   for (const t of db.trips) if (t.cloud) subscribeTrip(t.code);
 }
+function joinStatus(msg, color) {
+  const el = $('joinStatus');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--muted)'; }
+}
+function openJoinSheet() {
+  $('joinCode').value = '';
+  joinStatus('가족이 알려준 6자리 코드를 입력하세요.');
+  openSheet('sheetJoin');
+  setTimeout(() => $('joinCode').focus(), 100);
+}
 async function joinByCode(code) {
-  if (!cloudOn) { toast('실시간 공유가 아직 설정되지 않았어요'); return; }
+  if (!cloudOn) { joinStatus('실시간 공유가 설정되지 않았어요.', 'var(--red)'); return; }
   code = (code || '').trim().toUpperCase();
-  if (!code) return;
+  if (!code) { joinStatus('코드를 입력해 주세요.', 'var(--red)'); return; }
+  joinStatus('여행을 찾는 중...', 'var(--accent)');
   try {
     const snap = await fdb.collection('trips').doc(code).get();
-    if (!snap.exists) { toast('그 코드의 여행을 찾을 수 없어요'); return; }
+    if (!snap.exists) {
+      joinStatus('그 코드의 여행을 찾을 수 없어요. 코드를 다시 확인하거나, 만든 기기에서 "실시간 공유"가 켜져 있는지(☁️ 표시) 확인하세요.', 'var(--red)');
+      return;
+    }
     const data = normalizeTrip({ ...snap.data(), cloud: true });
     const idx = db.trips.findIndex(x => x.code === code);
     if (idx >= 0) db.trips[idx] = data; else db.trips.push(data);
     applyingRemote = true; save(); applyingRemote = false;
     subscribeTrip(code);
     currentTripId = data.id; view = 'trip'; currentTab = 'schedule'; dayFilter = 'all';
-    render();
+    closeSheets(); render();
     toast(`"${data.name}" 여행에 참여했어요!`);
-  } catch (e) { toast('참여 중 오류가 발생했어요'); }
+  } catch (e) {
+    const denied = e && (e.code === 'permission-denied' || /permission|insufficient/i.test(e.message || ''));
+    joinStatus(denied
+      ? '⚠️ Firestore 보안 규칙에서 막혀 있어요. 규칙을 열어야 참여할 수 있어요.'
+      : '오류가 발생했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.', 'var(--red)');
+  }
 }
 function enableCloud(t) {
   if (!cloudOn) { toast('실시간 공유가 아직 설정되지 않았어요'); return; }
@@ -748,10 +797,7 @@ function renderHome() {
 
   $('newTripBtn').addEventListener('click', () => openTripSheet(null));
   const jb = $('joinTripBtn');
-  if (jb) jb.addEventListener('click', () => {
-    const code = prompt('가족에게 받은 여행 코드를 입력하세요 (예: ABC123)');
-    if (code) joinByCode(code);
-  });
+  if (jb) jb.addEventListener('click', openJoinSheet);
   mainEl.querySelectorAll('.trip-card').forEach(c =>
     c.addEventListener('click', () => { currentTripId = c.dataset.trip; currentTab = 'schedule'; dayFilter = 'all'; view = 'trip'; render(); }));
 }
@@ -810,7 +856,7 @@ function renderScheduleTab(t, body) {
       <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span></div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
-          <div class="tl-time">${s.time || '종일'}</div>
+          <div class="tl-time">${fmtTime(s.time)}</div>
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
@@ -1235,6 +1281,29 @@ $('tSave').addEventListener('click', () => {
 
 // ═══════════════ 일정 시트 ═══════════════
 let schCat = 'tour';
+function fillTimeSelects() {
+  $('sAmpm').innerHTML = `<option value="">시간 없음(종일)</option><option value="AM">오전</option><option value="PM">오후</option>`;
+  let hrs = ''; for (let i = 1; i <= 12; i++) hrs += `<option value="${i}">${i}시</option>`;
+  $('sHour').innerHTML = hrs;
+  let mins = ''; for (let i = 0; i < 60; i += 5) mins += `<option value="${i}">${String(i).padStart(2,'0')}분</option>`;
+  $('sMin').innerHTML = mins;
+}
+function setTimeSelects(hhmm) {
+  if (!hhmm) { $('sAmpm').value = ''; $('sHour').value = '9'; $('sMin').value = '0'; return; }
+  const [h, m] = hhmm.split(':').map(Number);
+  $('sAmpm').value = h < 12 ? 'AM' : 'PM';
+  $('sHour').value = String(h % 12 === 0 ? 12 : h % 12);
+  $('sMin').value = String(Math.min(55, Math.round(m / 5) * 5));
+}
+function readTimeSelects() {
+  const ap = $('sAmpm').value;
+  if (!ap) return '';
+  let h = Number($('sHour').value);
+  const m = Number($('sMin').value);
+  if (ap === 'AM') h = (h === 12 ? 0 : h);
+  else h = (h === 12 ? 12 : h + 12);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
 function openSchSheet(schId) {
   const t = cur();
   editSchId = schId;
@@ -1244,7 +1313,8 @@ function openSchSheet(schId) {
   const days = tripDays(t);
   $('sDate').innerHTML = days.map((d,i) => `<option value="${d}">Day ${i+1} · ${fmtDate(d)}</option>`).join('');
   $('sDate').value = s ? s.date : (dayFilter !== 'all' && days.includes(dayFilter) ? dayFilter : days[0]);
-  $('sTime').value = s ? (s.time || '') : '';
+  fillTimeSelects();
+  setTimeSelects(s ? s.time : '');
   $('sTitle').value = s ? s.title : '';
   $('sMemo').value = s ? (s.memo || '') : '';
   schCat = s ? s.cat : 'tour';
@@ -1261,7 +1331,7 @@ $('sSave').addEventListener('click', () => {
   const t = cur();
   const title = $('sTitle').value.trim();
   if (!title) { toast('장소를 입력해 주세요'); return; }
-  const item = { id: editSchId || uid(), date: $('sDate').value, time: $('sTime').value,
+  const item = { id: editSchId || uid(), date: $('sDate').value, time: readTimeSelects(),
     title, memo: $('sMemo').value.trim(), cat: schCat };
   if (editSchId) t.schedule = t.schedule.map(s => s.id === editSchId ? item : s);
   else t.schedule.push(item);
@@ -1341,6 +1411,15 @@ $('eDelete').addEventListener('click', () => {
   t.expenses = t.expenses.filter(e => e.id !== editExpId);
   save(); syncPush(t); closeSheets(); render();
 });
+
+// ═══════════════ 여행 코드 참여 입력 ═══════════════
+$('joinCode').addEventListener('input', e => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+});
+$('joinCode').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); joinByCode($('joinCode').value); }
+});
+$('joinGo').addEventListener('click', () => joinByCode($('joinCode').value));
 
 // ═══════════════ PWA ═══════════════
 window.addEventListener('beforeinstallprompt', e => {
