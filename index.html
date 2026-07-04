@@ -191,20 +191,20 @@
       text-decoration: none;
     }
     .tl-map:active { background: #0e2230; }
-    .tl-cat { font-size: 16px; padding-top: 2px; }
+    .tl-right { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 2px; }
+    .tl-cat { font-size: 16px; }
     .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
     .tl-thumb {
       width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
       background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; display: block;
     }
     .tl-addphoto {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 0 10px; height: 56px; min-width: 56px; justify-content: center;
-      border-radius: 8px; background: var(--bg3); border: 1px dashed var(--border2);
-      color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; flex-direction: column;
+      width: 34px; height: 34px; border-radius: 9px;
+      background: var(--bg3); border: 1px solid var(--border2);
+      color: var(--muted); font-size: 15px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
     .tl-addphoto:active { background: var(--bg2); }
-    .tl-addphoto .ic { font-size: 16px; }
 
     /* ── Lightbox (사진 크게 보기) ── */
     #lightbox {
@@ -1067,12 +1067,12 @@ function renderScheduleTab(t, body) {
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
             <a class="tl-map" href="${esc(mapUrl(s.title))}" target="_blank" rel="noopener">🗺️ 지도에서 보기</a>
-            <div class="tl-photos">
-              ${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}
-              <button class="tl-addphoto" data-addphoto="${s.id}"><span class="ic">📷</span>사진</button>
-            </div>
+            ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
           </div>
-          <div class="tl-cat">${catEmoji(SCH_CATS, s.cat)}</div>
+          <div class="tl-right">
+            <div class="tl-cat">${catEmoji(SCH_CATS, s.cat)}</div>
+            <button class="tl-addphoto" data-addphoto="${s.id}" title="사진 추가">📷</button>
+          </div>
         </div>`).join('') : `<div class="empty" style="padding:20px">이 날은 아직 일정이 없어요</div>`}
     </div>`;
   }
