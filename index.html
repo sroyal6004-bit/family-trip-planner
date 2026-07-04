@@ -257,17 +257,30 @@
       margin: 16px 0 8px; letter-spacing: 0.05em;
     }
     .exp-item {
-      display: flex; align-items: center; gap: 12px;
+      display: flex; flex-direction: column;
       padding: 13px 14px; margin-bottom: 8px;
       background: var(--bg2); border: 1px solid var(--border);
       border-radius: 12px; cursor: pointer;
     }
     .exp-item:active { background: var(--bg3); }
+    .exp-main { display: flex; align-items: center; gap: 12px; }
     .exp-cat { font-size: 18px; }
     .exp-body { flex: 1; min-width: 0; }
     .exp-title { font-size: 14px; font-weight: 500; }
     .exp-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
     .exp-amt { font-family: var(--mono); font-size: 15px; color: var(--text2); white-space: nowrap; }
+    .exp-addphoto {
+      width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
+      background: var(--bg3); border: 1px solid var(--border2);
+      color: var(--muted); font-size: 13px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .exp-addphoto:active { background: var(--bg2); }
+    .exp-photos { display: flex; gap: 6px; flex-wrap: wrap; margin: 11px 0 2px 30px; }
+    .exp-thumb {
+      width: 50px; height: 50px; border-radius: 7px; object-fit: cover;
+      background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; display: block;
+    }
 
     /* ── Settlement ── */
     .dues-row {
@@ -762,7 +775,7 @@ async function joinByCode(code) {
     applyingRemote = true; save(); applyingRemote = false;
     subscribeTrip(code);
     currentTripId = data.id; view = 'trip'; currentTab = 'schedule'; dayFilter = 'all';
-    closeSheets(); render();
+    _hideSheets(); render();   // 참여 시트→여행상세 전환, 히스토리 항목 유지
     toast(`"${data.name}" 여행에 참여했어요!`);
   } catch (e) {
     const code = (e && e.code) || '';
@@ -873,7 +886,7 @@ function subscribePhotos(code) {
         changed = true;
       }
     });
-    if (changed && view === 'trip' && currentTab === 'schedule') render();
+    if (changed && view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense')) render();
   }, err => console.warn('photo snapshot err', err));
 }
 function pushPhotoCloud(trip, photo) {
@@ -893,7 +906,7 @@ async function loadTripMedia(t) {
   loadedPhotoCode = t.code;
   try { tripPhotos = await idbGetByTrip(t.code); } catch { tripPhotos = []; }
   if (t.cloud) subscribePhotos(t.code);
-  if (view === 'trip' && currentTab === 'schedule') render();
+  if (view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense')) render();
 }
 function photosFor(schedId) {
   return tripPhotos.filter(p => p.schedId === schedId).sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
@@ -942,16 +955,48 @@ async function deleteAllTripMedia(t) {
 const $ = id => document.getElementById(id);
 const headerEl = $('header'), mainEl = $('main'), fab = $('fab'), overlay = $('overlay');
 
+// ═══════════════ 뒤로가기(하드웨어 버튼) 제어 ═══════════════
+// 열려있는 레이어(사진뷰 > 시트 > 여행상세)를 한 단계씩 닫고,
+// 홈 화면에서 뒤로가기를 누를 때만 앱이 종료되도록 히스토리를 사용.
+let suppressPop = false;
+function topLayer() {
+  if ($('lightbox').classList.contains('show')) return 'lightbox';
+  if (document.querySelector('.sheet.show')) return 'sheet';
+  if (view === 'trip') return 'trip';
+  return null;
+}
+function closeLayer(layer) {
+  if (layer === 'lightbox') _hideLightbox();
+  else if (layer === 'sheet') _hideSheets();
+  else if (layer === 'trip') { view = 'home'; render(); }
+}
+function pushLayer() { try { history.pushState({ ftp: 1 }, ''); } catch (e) {} }
+function consumeEntry() { suppressPop = true; try { history.back(); } catch (e) { suppressPop = false; } }
+function uiBack() {                       // 화면 안 버튼(×, ‹ 등)으로 닫을 때
+  const layer = topLayer();
+  if (!layer) return;
+  closeLayer(layer);
+  consumeEntry();
+}
+window.addEventListener('popstate', () => { // 하드웨어/브라우저 뒤로가기
+  if (suppressPop) { suppressPop = false; return; }
+  const layer = topLayer();
+  if (layer) closeLayer(layer);   // 열린 레이어가 있으면 닫기 (앱 유지)
+  // 홈이면 아무것도 안 함 → 브라우저 기본 동작(앱 종료)
+});
+
 // ═══════════════ 시트 열기/닫기 ═══════════════
+function _hideSheets() {
+  overlay.classList.remove('show');
+  document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
+}
 function openSheet(id) {
   overlay.classList.add('show');
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
   $(id).classList.add('show');
+  pushLayer();
 }
-function closeSheets() {
-  overlay.classList.remove('show');
-  document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
-}
+function closeSheets() { uiBack(); }
 overlay.addEventListener('click', closeSheets);
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeSheets));
 
@@ -1004,7 +1049,7 @@ function renderHome() {
   const jb = $('joinTripBtn');
   if (jb) jb.addEventListener('click', openJoinSheet);
   mainEl.querySelectorAll('.trip-card').forEach(c =>
-    c.addEventListener('click', () => { currentTripId = c.dataset.trip; currentTab = 'schedule'; dayFilter = 'all'; view = 'trip'; render(); }));
+    c.addEventListener('click', () => { currentTripId = c.dataset.trip; currentTab = 'schedule'; dayFilter = 'all'; view = 'trip'; render(); pushLayer(); }));
 }
 
 // ═══════════════ 렌더: 여행 상세 ═══════════════
@@ -1022,7 +1067,7 @@ function renderTrip() {
         ${t.cloud ? `<span class="cloud-tag">☁️ 실시간 공유 · ${t.code}</span>` : ''}
       </div>
     </div>`;
-  $('backBtn').addEventListener('click', () => { view = 'home'; render(); });
+  $('backBtn').addEventListener('click', () => uiBack());
 
   const tabs = [['schedule','📅 일정'], ['expense','💰 경비'], ['settle','🧮 정산'], ['settings','⚙️ 설정']];
   mainEl.innerHTML = `<div class="tabs">${tabs.map(([k,l]) =>
@@ -1132,18 +1177,34 @@ function renderExpenseTab(t, body) {
       html += `<div class="exp-date-head">${idx >= 0 ? `DAY ${idx+1} · ` : ''}${fmtDate(d)} — ${fmt(dayTotal)}원</div>`;
       html += items.map(e => `
         <div class="exp-item" data-exp="${e.id}">
-          <span class="exp-cat">${catEmoji(EXP_CATS, e.cat)}</span>
-          <div class="exp-body">
-            <div class="exp-title">${esc(e.title)}</div>
-            <div class="exp-sub">${e.payerId === FUND ? '🏦 공금' : esc(memberName(t, e.payerId))} 결제 · ${e.splitIds.length}명 분담</div>
+          <div class="exp-main">
+            <span class="exp-cat">${catEmoji(EXP_CATS, e.cat)}</span>
+            <div class="exp-body">
+              <div class="exp-title">${esc(e.title)}</div>
+              <div class="exp-sub">${e.payerId === FUND ? '🏦 공금' : esc(memberName(t, e.payerId))} 결제 · ${e.splitIds.length}명 분담</div>
+            </div>
+            <span class="exp-amt">${fmt(e.amount)}원</span>
+            <button class="exp-addphoto" data-addphoto-exp="${e.id}" title="영수증 사진">📷</button>
           </div>
-          <span class="exp-amt">${fmt(e.amount)}원</span>
+          ${photosFor(e.id).length ? `<div class="exp-photos">${photosFor(e.id).map(p => `<img class="exp-thumb" data-photo="${p.id}" src="${p.data}" alt="영수증"/>`).join('')}</div>` : ''}
         </div>`).join('');
     }
   }
   body.innerHTML = html;
   body.querySelectorAll('[data-exp]').forEach(el =>
-    el.addEventListener('click', () => openExpSheet(el.dataset.exp)));
+    el.addEventListener('click', e => {
+      if (e.target.closest('.exp-thumb') || e.target.closest('.exp-addphoto')) return;
+      openExpSheet(el.dataset.exp);
+    }));
+  body.querySelectorAll('[data-addphoto-exp]').forEach(b =>
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      photoTargetSched = b.dataset.addphotoExp;
+      $('photoInput').value = '';
+      $('photoInput').click();
+    }));
+  body.querySelectorAll('.exp-thumb[data-photo]').forEach(im =>
+    im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
 }
 
 // ── 정산 계산 ──
@@ -1394,7 +1455,7 @@ function renderSettingsTab(t, body) {
     loadedPhotoCode = null; tripPhotos = [];
     db.trips = db.trips.filter(x => x.id !== t.id);
     save(); if (code) syncDelete(code);
-    view = 'home'; render();
+    view = 'home'; render(); consumeEntry();
   });
 }
 
@@ -1488,6 +1549,7 @@ $('tSave').addEventListener('click', () => {
     Object.assign(t, { name, place, startDate: start, endDate: end, members: formMembers });
     if (!t.treasurerId || !formMembers.some(m => m.id === t.treasurerId)) t.treasurerId = formMembers[0].id;
     save(); syncPush(t);
+    closeSheets();            // 여행 상세로 복귀 (히스토리 한 단계 소비)
   } else {
     const t = normalizeTrip({
       id: uid(), name, place, startDate: start, endDate: end,
@@ -1497,8 +1559,9 @@ $('tSave').addEventListener('click', () => {
     db.trips.push(t);
     save(); if (t.cloud) { syncPush(t); subscribeTrip(t.code); }
     currentTripId = t.id; view = 'trip'; currentTab = 'schedule'; dayFilter = 'all';
+    _hideSheets();           // 시트→여행상세로 전환하되 히스토리 항목은 그대로 유지
   }
-  closeSheets(); render();
+  render();
 });
 
 // ═══════════════ 일정 시트 ═══════════════
@@ -1631,9 +1694,11 @@ $('eSave').addEventListener('click', () => {
 });
 $('eDelete').addEventListener('click', () => {
   const t = cur();
-  if (!confirm('이 경비 기록을 삭제할까요?')) return;
-  t.expenses = t.expenses.filter(e => e.id !== editExpId);
+  if (!confirm('이 경비 기록을 삭제할까요?\n첨부한 영수증 사진도 함께 삭제돼요.')) return;
+  const removedId = editExpId;
+  t.expenses = t.expenses.filter(e => e.id !== removedId);
   save(); syncPush(t); closeSheets(); render();
+  deletePhotosForSched(removedId);
 });
 
 // ═══════════════ 사진 첨부 · 라이트박스 ═══════════════
@@ -1647,13 +1712,14 @@ function openLightbox(id) {
   const p = tripPhotos.find(x => x.id === id);
   if (!p) return;
   lbPhotoId = id; $('lbImg').src = p.data; $('lightbox').classList.add('show');
+  pushLayer();
 }
-function closeLightbox() { $('lightbox').classList.remove('show'); $('lbImg').src = ''; lbPhotoId = null; }
-$('lbClose').addEventListener('click', closeLightbox);
+function _hideLightbox() { $('lightbox').classList.remove('show'); $('lbImg').src = ''; lbPhotoId = null; }
+$('lbClose').addEventListener('click', () => uiBack());
 $('lbDelete').addEventListener('click', () => {
   if (!lbPhotoId) return;
   if (!confirm('이 사진을 삭제할까요?')) return;
-  const id = lbPhotoId; closeLightbox(); deletePhoto(id);
+  const id = lbPhotoId; uiBack(); deletePhoto(id);
 });
 
 // ═══════════════ 여행 코드 참여 입력 ═══════════════
@@ -1687,6 +1753,7 @@ if ('serviceWorker' in navigator) {
 cloudOn = initCloud();
 load();
 startSync();
+try { history.replaceState({ ftp: 0 }, ''); } catch (e) {}   // 홈 = 기준점
 render();
 </script>
 </body>
