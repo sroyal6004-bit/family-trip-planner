@@ -203,21 +203,22 @@
       border-radius: 12px; cursor: pointer; align-items: flex-start;
     }
     .tl-item:active { background: var(--bg3); }
+    .tl-timecol { display: flex; flex-direction: column; min-width: 58px; }
     .tl-time {
       font-family: var(--mono); font-size: 12px; color: var(--accent);
-      min-width: 58px; padding-top: 2px; white-space: nowrap;
+      padding-top: 2px; white-space: nowrap;
     }
     .tl-body { flex: 1; min-width: 0; }
     .tl-title { font-size: 14px; font-weight: 500; }
     .tl-memo { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: pre-wrap; }
-    .tl-map {
-      display: inline-flex; align-items: center; gap: 4px;
-      margin-top: 7px; padding: 5px 10px; border-radius: 16px;
+    .tl-mapbtn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      margin-top: 9px; width: 54px; height: 54px; border-radius: 10px;
       background: #0c1a24; border: 1px solid #16344a;
-      color: var(--accent); font-size: 11px; font-weight: 700;
-      text-decoration: none;
+      color: var(--accent); font-size: 16px; text-decoration: none;
     }
-    .tl-map:active { background: #0e2230; }
+    .tl-mapbtn span { font-size: 10px; font-weight: 700; }
+    .tl-mapbtn:active { background: #0e2230; }
     .tl-right { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 2px; }
     .tl-cat { font-size: 16px; }
     .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
@@ -1181,11 +1182,13 @@ function renderScheduleTab(t, body) {
       <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선 한눈에 보기</button>` : ''}</div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
-          <div class="tl-time">${fmtTime(s.time)}</div>
+          <div class="tl-timecol">
+            <div class="tl-time">${fmtTime(s.time)}</div>
+            <a class="tl-mapbtn" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener">🗺️<span>지도</span></a>
+          </div>
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
-            <a class="tl-map" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener">🗺️ 지도에서 보기</a>
             ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
           </div>
           <div class="tl-right">
@@ -1203,7 +1206,7 @@ function renderScheduleTab(t, body) {
     c.addEventListener('click', () => { dayFilter = c.dataset.day; render(); }));
   body.querySelectorAll('[data-sch]').forEach(el =>
     el.addEventListener('click', e => {
-      if (e.target.closest('.tl-map') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto')) return;
+      if (e.target.closest('.tl-mapbtn') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto')) return;
       openSchSheet(el.dataset.sch);
     }));
   body.querySelectorAll('[data-addphoto]').forEach(b =>
