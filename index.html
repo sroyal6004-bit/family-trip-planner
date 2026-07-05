@@ -723,7 +723,10 @@ function memberName(t, id) {
   const m = t.members.find(m => m.id === id);
   return m ? m.name : '?';
 }
-function mapUrl(place) { return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place); }
+function mapUrl(place, ctx) {
+  const q = place + (ctx ? ', ' + ctx : '');   // 여행지를 함께 붙여 검색 정확도↑ (동명이지 오인 방지)
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
+}
 function fmtTime(hhmm) {
   if (!hhmm) return '종일';
   const [h, m] = hhmm.split(':').map(Number);
@@ -1143,7 +1146,7 @@ function renderScheduleTab(t, body) {
     any = true;
     const idx = days.indexOf(d) + 1;
     const routeUrl = items.length >= 2
-      ? 'https://www.google.com/maps/dir/' + items.map(s => encodeURIComponent(s.title)).join('/')
+      ? 'https://www.google.com/maps/dir/' + items.map(s => encodeURIComponent(s.title + (t.place ? ', ' + t.place : ''))).join('/')
       : '';
     html += `<div class="day-block">
       <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${routeUrl ? `<a class="day-route" href="${esc(routeUrl)}" target="_blank" rel="noopener">🧭 동선 한눈에 보기</a>` : ''}</div>
@@ -1153,7 +1156,7 @@ function renderScheduleTab(t, body) {
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
-            <a class="tl-map" href="${esc(mapUrl(s.title))}" target="_blank" rel="noopener">🗺️ 지도에서 보기</a>
+            <a class="tl-map" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener">🗺️ 지도에서 보기</a>
             ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
           </div>
           <div class="tl-right">
