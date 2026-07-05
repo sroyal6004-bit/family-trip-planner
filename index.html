@@ -171,9 +171,27 @@
       padding: 5px 11px; border-radius: 16px;
       background: #0c1a24; border: 1px solid #16344a;
       color: var(--accent); font-size: 11px; font-weight: 700;
+      font-family: var(--sans); cursor: pointer;
       text-decoration: none; white-space: nowrap;
     }
     .day-route:active { background: #0e2230; }
+
+    /* ── 동선 선택 시트 ── */
+    .route-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; margin-bottom: 8px;
+      background: var(--bg2); border: 1px solid var(--border2);
+      border-radius: 12px; cursor: pointer;
+    }
+    .route-row.on { border-color: var(--accent2); background: #0e2836; }
+    .rcheck {
+      width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto;
+      border: 1.5px solid var(--border2); display: flex; align-items: center;
+      justify-content: center; font-size: 13px; color: transparent;
+    }
+    .route-row.on .rcheck { background: var(--accent); border-color: var(--accent); color: #06121a; }
+    .route-time { font-family: var(--mono); font-size: 12px; color: var(--accent); min-width: 54px; white-space: nowrap; }
+    .route-name { font-size: 14px; flex: 1; min-width: 0; }
     .day-num {
       font-family: var(--mono); font-size: 12px; font-weight: 700;
       color: var(--accent); letter-spacing: 0.08em;
@@ -585,6 +603,19 @@
   <div id="joinStatus" style="font-size:12px;line-height:1.6;min-height:16px;color:var(--muted)"></div>
   <div class="sheet-actions">
     <button class="btn-primary" id="joinGo">참여하기</button>
+  </div>
+</div>
+
+<!-- 동선(경로) 선택 시트 -->
+<div class="sheet" id="sheetRoute">
+  <div class="sheet-title"><span>🧭 동선 한눈에 보기</span><button class="sheet-close" data-close>×</button></div>
+  <div style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:14px">
+    경로에 넣을 장소를 골라주세요. <b>같은 도시(지역)</b>끼리 골라야 길이 그려져요.<br/>
+    (비행기 타는 날은 공항을 빼면 돼요.) 선택한 <b>시간 순서</b>대로 구글지도 경로가 열립니다.
+  </div>
+  <div id="routeList"></div>
+  <div class="sheet-actions">
+    <button class="btn-primary" id="routeGo">🗺️ 지도로 경로 보기</button>
   </div>
 </div>
 
@@ -1145,11 +1176,9 @@ function renderScheduleTab(t, body) {
     if (!items.length && dayFilter === 'all') continue;
     any = true;
     const idx = days.indexOf(d) + 1;
-    const routeUrl = items.length >= 2
-      ? 'https://www.google.com/maps/dir/' + items.map(s => encodeURIComponent(s.title + (t.place ? ', ' + t.place : ''))).join('/')
-      : '';
+    const showRoute = items.length >= 2;
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${routeUrl ? `<a class="day-route" href="${esc(routeUrl)}" target="_blank" rel="noopener">🧭 동선 한눈에 보기</a>` : ''}</div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선 한눈에 보기</button>` : ''}</div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-time">${fmtTime(s.time)}</div>
@@ -1186,7 +1215,44 @@ function renderScheduleTab(t, body) {
     }));
   body.querySelectorAll('[data-photo]').forEach(im =>
     im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
+  body.querySelectorAll('[data-route-day]').forEach(b =>
+    b.addEventListener('click', () => openRouteSheet(b.dataset.routeDay)));
 }
+
+// ── 동선(경로) 선택 ──
+let routeItems = [];
+let routeSel = new Set();
+function openRouteSheet(date) {
+  const t = cur(); if (!t) return;
+  routeItems = t.schedule.filter(s => s.date === date)
+    .sort((a,b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
+  routeSel = new Set(routeItems.map(s => s.id));   // 기본 전체 선택
+  renderRouteList();
+  openSheet('sheetRoute');
+}
+function renderRouteList() {
+  $('routeList').innerHTML = routeItems.map(s => `
+    <div class="route-row ${routeSel.has(s.id) ? 'on' : ''}" data-rid="${s.id}">
+      <div class="rcheck">✓</div>
+      <div class="route-time">${fmtTime(s.time)}</div>
+      <div class="route-name">${esc(s.title)}</div>
+    </div>`).join('');
+  $('routeList').querySelectorAll('[data-rid]').forEach(r =>
+    r.addEventListener('click', () => {
+      const id = r.dataset.rid;
+      if (routeSel.has(id)) routeSel.delete(id); else routeSel.add(id);
+      renderRouteList();
+    }));
+}
+$('routeGo').addEventListener('click', () => {
+  const t = cur();
+  const chosen = routeItems.filter(s => routeSel.has(s.id));
+  if (chosen.length < 2) { toast('경로를 그리려면 장소를 2곳 이상 선택하세요'); return; }
+  const url = 'https://www.google.com/maps/dir/' +
+    chosen.map(s => encodeURIComponent(s.title + (t && t.place ? ', ' + t.place : ''))).join('/');
+  window.open(url, '_blank');
+  closeSheets();
+});
 
 // ── 경비 탭 ──
 function renderExpenseTab(t, body) {
