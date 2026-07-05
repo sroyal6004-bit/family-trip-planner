@@ -164,7 +164,16 @@
 
     /* ── Timeline (schedule) ── */
     .day-block { margin-bottom: 22px; }
-    .day-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .day-route {
+      margin-left: auto;
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 11px; border-radius: 16px;
+      background: #0c1a24; border: 1px solid #16344a;
+      color: var(--accent); font-size: 11px; font-weight: 700;
+      text-decoration: none; white-space: nowrap;
+    }
+    .day-route:active { background: #0e2230; }
     .day-num {
       font-family: var(--mono); font-size: 12px; font-weight: 700;
       color: var(--accent); letter-spacing: 0.08em;
@@ -1133,8 +1142,11 @@ function renderScheduleTab(t, body) {
     if (!items.length && dayFilter === 'all') continue;
     any = true;
     const idx = days.indexOf(d) + 1;
+    const routeUrl = items.length >= 2
+      ? 'https://www.google.com/maps/dir/' + items.map(s => encodeURIComponent(s.title)).join('/')
+      : '';
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span></div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${routeUrl ? `<a class="day-route" href="${esc(routeUrl)}" target="_blank" rel="noopener">🧭 동선 한눈에 보기</a>` : ''}</div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-time">${fmtTime(s.time)}</div>
