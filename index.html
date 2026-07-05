@@ -212,12 +212,11 @@
     .tl-title { font-size: 14px; font-weight: 500; }
     .tl-memo { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: pre-wrap; }
     .tl-mapbtn {
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-      margin-top: 9px; width: 54px; height: 54px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 9px; width: 34px; height: 34px; border-radius: 9px;
       background: #0c1a24; border: 1px solid #16344a;
-      color: var(--accent); font-size: 16px; text-decoration: none;
+      color: var(--accent); font-size: 15px; text-decoration: none;
     }
-    .tl-mapbtn span { font-size: 10px; font-weight: 700; }
     .tl-mapbtn:active { background: #0e2230; }
     .tl-right { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 2px; }
     .tl-cat { font-size: 16px; }
@@ -1184,7 +1183,7 @@ function renderScheduleTab(t, body) {
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
             <div class="tl-time">${fmtTime(s.time)}</div>
-            <a class="tl-mapbtn" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener">🗺️<span>지도</span></a>
+            <a class="tl-mapbtn" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener" title="지도에서 보기">🗺️</a>
           </div>
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
