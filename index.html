@@ -61,7 +61,14 @@
     input:focus, select:focus, textarea:focus { border-color: var(--accent2); }
     input[type="date"], input[type="time"] { min-height: 46px; }
 
-    #app { min-height: 100vh; padding-bottom: env(safe-area-inset-bottom, 20px); }
+    #app { min-height: 100vh; max-width: 640px; margin: 0 auto; padding-bottom: env(safe-area-inset-bottom, 20px); }
+    /* 넓은 화면(PC)에서는 가운데 정렬된 폰 폭 칸으로 표시 */
+    @media (min-width: 672px) {
+      body { background: #06080c; }
+      #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--bg); }
+      .fab { right: auto; left: 50%; margin-left: 246px; }
+      #install-banner { left: 50%; right: auto; margin-left: -308px; width: 616px; }
+    }
 
     /* ── Header ── */
     .header {
@@ -247,6 +254,32 @@
     .lb-del { color: var(--red); font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
     .lb-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 8px calc(env(safe-area-inset-bottom, 0px) + 14px); }
     .lb-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+
+    /* ── 미니게임 ── */
+    #game { display: none; position: fixed; inset: 0; z-index: 210; background: var(--bg); flex-direction: column; }
+    #game.show { display: flex; }
+    .game-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .game-stat { font-family: var(--mono); font-size: 13px; color: var(--text2); white-space: nowrap; }
+    .game-close { background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer; padding: 2px 6px; line-height: 1; }
+    .game-canvas-wrap { position: relative; flex: 1; overflow: hidden; }
+    #gameCanvas { position: absolute; inset: 0; touch-action: none; display: block; }
+    .game-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: rgba(6,8,12,0.82); text-align: center; padding: 20px;
+    }
+    .game-msg-title { font-size: 24px; font-weight: 900; }
+    .game-msg-sub { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .game-start {
+      margin-top: 8px; padding: 14px 34px; border: none; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #06121a; font-size: 16px; font-weight: 700; cursor: pointer; font-family: var(--sans);
+    }
+    .game-start:active { transform: scale(0.97); }
 
     /* ── Expenses ── */
     .summary-card {
@@ -603,6 +636,24 @@
   <div id="joinStatus" style="font-size:12px;line-height:1.6;min-height:16px;color:var(--muted)"></div>
   <div class="sheet-actions">
     <button class="btn-primary" id="joinGo">참여하기</button>
+  </div>
+</div>
+
+<!-- 미니게임: 벽돌깨기 -->
+<div id="game">
+  <div class="game-bar">
+    <span class="game-stat" style="font-weight:700;color:var(--accent)">🎮 벽돌깨기</span>
+    <span class="game-stat" id="gameScore" style="margin-left:auto">점수 0</span>
+    <span class="game-stat" id="gameLives">❤️❤️❤️</span>
+    <button class="game-close" id="gameClose">×</button>
+  </div>
+  <div class="game-canvas-wrap" id="gameWrap">
+    <canvas id="gameCanvas"></canvas>
+    <div class="game-overlay" id="gameMsg">
+      <div class="game-msg-title" id="gameMsgTitle">벽돌깨기</div>
+      <div class="game-msg-sub" id="gameMsgSub">손가락으로 막대를 좌우로 움직여 공을 튕겨요</div>
+      <button class="game-start" id="gameStart">시작하기</button>
+    </div>
   </div>
 </div>
 
@@ -1030,13 +1081,15 @@ const headerEl = $('header'), mainEl = $('main'), fab = $('fab'), overlay = $('o
 // 홈 화면에서 뒤로가기를 누를 때만 앱이 종료되도록 히스토리를 사용.
 let suppressPop = false;
 function topLayer() {
+  if ($('game').classList.contains('show')) return 'game';
   if ($('lightbox').classList.contains('show')) return 'lightbox';
   if (document.querySelector('.sheet.show')) return 'sheet';
   if (view === 'trip') return 'trip';
   return null;
 }
 function closeLayer(layer) {
-  if (layer === 'lightbox') _hideLightbox();
+  if (layer === 'game') _hideGame();
+  else if (layer === 'lightbox') _hideLightbox();
   else if (layer === 'sheet') _hideSheets();
   else if (layer === 'trip') { view = 'home'; render(); }
 }
@@ -1085,6 +1138,7 @@ function renderHome() {
   // 새 여행 만들기 / 여행 코드로 참여하기 — 항상 맨 위
   html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
   if (cloudOn) html += `<button class="add-btn ghost" id="joinTripBtn">🔗 여행 코드로 참여하기</button>`;
+  html += `<button class="add-btn ghost" id="gameBtn" style="margin-top:10px">🎮 심심풀이 게임 · 벽돌깨기</button>`;
 
   if (!db.trips.length) {
     html += `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>위에서 첫 여행을 만들어 보세요!</div>`;
@@ -1121,6 +1175,8 @@ function renderHome() {
   $('newTripBtn').addEventListener('click', () => openTripSheet(null));
   const jb = $('joinTripBtn');
   if (jb) jb.addEventListener('click', openJoinSheet);
+  const gb = $('gameBtn');
+  if (gb) gb.addEventListener('click', openGame);
   mainEl.querySelectorAll('.trip-card').forEach(c =>
     c.addEventListener('click', () => { currentTripId = c.dataset.trip; currentTab = 'schedule'; dayFilter = 'all'; view = 'trip'; render(); pushLayer(); }));
 }
@@ -1921,6 +1977,121 @@ $('joinCode').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); joinByCode($('joinCode').value); }
 });
 $('joinGo').addEventListener('click', () => joinByCode($('joinCode').value));
+
+// ═══════════════ 미니게임: 벽돌깨기 ═══════════════
+const gc = $('gameCanvas');
+const gctx = gc.getContext('2d');
+let gRaf = 0, gW = 0, gH = 0;
+let gPaddle, gBall, gBricks = [], gScore = 0, gLives = 3, gLaunched = false, gRunning = false, gBest = 0;
+const G_COLS = 7, G_ROWS = 5, G_BRICK_H = 18, G_GAP = 6;
+const G_COLORS = ['#e07a8a', '#f4a94a', '#6fc98a', '#4cc3e8', '#9a7ae0'];
+
+function openGame() {
+  $('game').classList.add('show');
+  pushLayer();
+  gBest = Number(localStorage.getItem('ftp-game-best') || 0);
+  setupGame();
+  showGameMsg('벽돌깨기', `최고 점수 ${gBest}점 · 막대를 움직여 공을 튕겨요`, '시작하기');
+}
+function _hideGame() { $('game').classList.remove('show'); stopGameLoop(); }
+function stopGameLoop() { gRunning = false; if (gRaf) cancelAnimationFrame(gRaf); gRaf = 0; }
+
+function fitGameCanvas() {
+  const wrap = $('gameWrap');
+  gW = wrap.clientWidth; gH = wrap.clientHeight;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  gc.width = Math.round(gW * dpr); gc.height = Math.round(gH * dpr);
+  gc.style.width = gW + 'px'; gc.style.height = gH + 'px';
+  gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function buildBricks() {
+  gBricks = [];
+  const mx = 10;
+  const bw = (gW - mx * 2 - G_GAP * (G_COLS - 1)) / G_COLS;
+  for (let r = 0; r < G_ROWS; r++)
+    for (let c = 0; c < G_COLS; c++)
+      gBricks.push({ x: mx + c * (bw + G_GAP), y: 56 + r * (G_BRICK_H + G_GAP), w: bw, h: G_BRICK_H, alive: true, color: G_COLORS[r % G_COLORS.length] });
+}
+function resetBall() {
+  gPaddle = { w: Math.max(64, gW * 0.22), h: 12, x: gW / 2, y: gH - 40 };
+  gBall = { x: gW / 2, y: gPaddle.y - 12, r: 7, vx: 0, vy: 0, speed: Math.max(4.2, gW / 88) };
+  gLaunched = false;
+}
+function setupGame() {
+  fitGameCanvas(); gScore = 0; gLives = 3; buildBricks(); resetBall(); updateGameHud(); drawGame();
+}
+function launchBall() {
+  gLaunched = true;
+  const ang = -Math.PI / 2 + (Math.random() * 0.6 - 0.3);
+  gBall.vx = Math.cos(ang) * gBall.speed; gBall.vy = Math.sin(ang) * gBall.speed;
+}
+function updateGameHud() {
+  $('gameScore').textContent = '점수 ' + gScore;
+  $('gameLives').textContent = gLives > 0 ? '❤️'.repeat(gLives) : '—';
+}
+function startGame() { hideGameMsg(); gRunning = true; if (!gLaunched) launchBall(); if (!gRaf) gRaf = requestAnimationFrame(gameLoop); }
+function endGame(win) {
+  stopGameLoop();
+  if (gScore > gBest) { gBest = gScore; localStorage.setItem('ftp-game-best', String(gBest)); }
+  showGameMsg(win ? '🎉 클리어!' : '게임 오버', `점수 ${gScore}점 · 최고 ${gBest}점`, '다시 하기');
+}
+function gameLoop() { gRaf = 0; if (gRunning) { stepGame(); drawGame(); gRaf = requestAnimationFrame(gameLoop); } }
+function stepGame() {
+  if (!gLaunched) return;
+  const b = gBall, p = gPaddle;
+  b.x += b.vx; b.y += b.vy;
+  if (b.x - b.r < 0) { b.x = b.r; b.vx *= -1; }
+  if (b.x + b.r > gW) { b.x = gW - b.r; b.vx *= -1; }
+  if (b.y - b.r < 0) { b.y = b.r; b.vy *= -1; }
+  if (b.vy > 0 && b.y + b.r >= p.y && b.y - b.r <= p.y + p.h && b.x >= p.x - p.w / 2 && b.x <= p.x + p.w / 2) {
+    b.y = p.y - b.r;
+    const hit = (b.x - p.x) / (p.w / 2);
+    const ang = -Math.PI / 2 + hit * (Math.PI / 3);
+    b.vx = Math.cos(ang) * b.speed; b.vy = Math.sin(ang) * b.speed;
+  }
+  for (const br of gBricks) {
+    if (!br.alive) continue;
+    if (b.x + b.r > br.x && b.x - b.r < br.x + br.w && b.y + b.r > br.y && b.y - b.r < br.y + br.h) {
+      br.alive = false; gScore += 10; updateGameHud();
+      const ox = Math.min(b.x + b.r - br.x, br.x + br.w - (b.x - b.r));
+      const oy = Math.min(b.y + b.r - br.y, br.y + br.h - (b.y - b.r));
+      if (ox < oy) b.vx *= -1; else b.vy *= -1;
+      break;
+    }
+  }
+  if (b.y - b.r > gH) {
+    gLives--; updateGameHud();
+    if (gLives <= 0) { endGame(false); return; }
+    resetBall(); launchBall();
+  }
+  if (gBricks.every(br => !br.alive)) { endGame(true); return; }
+}
+function gRoundRect(x, y, w, h, r) {
+  gctx.beginPath(); gctx.moveTo(x + r, y);
+  gctx.arcTo(x + w, y, x + w, y + h, r); gctx.arcTo(x + w, y + h, x, y + h, r);
+  gctx.arcTo(x, y + h, x, y, r); gctx.arcTo(x, y, x + w, y, r); gctx.closePath();
+}
+function drawGame() {
+  gctx.clearRect(0, 0, gW, gH);
+  gctx.fillStyle = '#0a0d12'; gctx.fillRect(0, 0, gW, gH);
+  for (const br of gBricks) { if (!br.alive) continue; gctx.fillStyle = br.color; gRoundRect(br.x, br.y, br.w, br.h, 4); gctx.fill(); }
+  gctx.fillStyle = '#4cc3e8'; gRoundRect(gPaddle.x - gPaddle.w / 2, gPaddle.y, gPaddle.w, gPaddle.h, 6); gctx.fill();
+  gctx.fillStyle = '#eaf0f4'; gctx.beginPath(); gctx.arc(gBall.x, gBall.y, gBall.r, 0, Math.PI * 2); gctx.fill();
+}
+function showGameMsg(t, s, btn) { $('gameMsgTitle').textContent = t; $('gameMsgSub').textContent = s; $('gameStart').textContent = btn || '시작하기'; $('gameMsg').style.display = 'flex'; }
+function hideGameMsg() { $('gameMsg').style.display = 'none'; }
+function gamePointer(e) {
+  if (!gPaddle) return;
+  const rect = gc.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  gPaddle.x = Math.max(gPaddle.w / 2, Math.min(gW - gPaddle.w / 2, cx));
+  if (!gLaunched) { gBall.x = gPaddle.x; drawGame(); }
+  if (e.cancelable) e.preventDefault();
+}
+gc.addEventListener('pointermove', gamePointer);
+gc.addEventListener('touchmove', gamePointer, { passive: false });
+$('gameStart').addEventListener('click', startGame);
+$('gameClose').addEventListener('click', () => uiBack());
 
 // ═══════════════ PWA ═══════════════
 window.addEventListener('beforeinstallprompt', e => {
