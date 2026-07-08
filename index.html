@@ -303,6 +303,7 @@
       color: var(--text); font-size: 22px; cursor: pointer;
     }
     .gctl:active { background: var(--bg2); }
+    .gctl-blank { flex: 1; max-width: 80px; }
 
     /* ── Expenses ── */
     .summary-card {
@@ -668,15 +669,16 @@
     <span class="game-stat" id="gameTitle" style="font-weight:700;color:var(--accent)">🎮 게임</span>
     <span class="game-stat" id="gameScore" style="margin-left:auto">점수 0</span>
     <span class="game-stat" id="gameLives">❤️❤️❤️</span>
+    <button class="game-close" id="gameMute">🔊</button>
     <button class="game-close" id="gameClose">×</button>
   </div>
   <div class="game-canvas-wrap" id="gameWrap">
     <canvas id="gameCanvas"></canvas>
     <div class="game-controls" id="gameControls">
-      <button class="gctl" data-ctl="left">◀</button>
       <button class="gctl" data-ctl="rotate">⟳</button>
+      <button class="gctl" data-ctl="left">◀</button>
       <button class="gctl" data-ctl="right">▶</button>
-      <button class="gctl" data-ctl="down">▼</button>
+      <div class="gctl-blank"></div>
       <button class="gctl" data-ctl="drop">⏬</button>
     </div>
     <div class="game-overlay" id="gameMsg">
@@ -2018,6 +2020,39 @@ const gc = $('gameCanvas');
 const gctx = gc.getContext('2d');
 let gRaf = 0, gW = 0, gH = 0, gRunning = false, gLast = 0, gScore = 0, gameMode = 'breakout';
 
+// ── 사운드 (Web Audio, 파일 없이 생성) ──
+let audioCtx = null, gameMuted = localStorage.getItem('ftp-game-mute') === '1';
+function actx() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return audioCtx; }
+function unlockAudio() { const ac = actx(); if (ac && ac.state === 'suspended') ac.resume(); }
+function beep(freq, dur, type, vol) {
+  if (gameMuted) return;
+  const ac = actx(); if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'square'; o.frequency.value = freq;
+  o.connect(g); g.connect(ac.destination);
+  const t = ac.currentTime;
+  g.gain.setValueAtTime(vol || 0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + (dur || 0.06));
+  o.start(t); o.stop(t + (dur || 0.06) + 0.02);
+}
+const SFX = {
+  brick: () => beep(880, 0.05, 'square', 0.12),
+  paddle: () => beep(300, 0.05, 'square', 0.12),
+  life: () => { beep(320, 0.12, 'sawtooth', 0.14); setTimeout(() => beep(170, 0.16, 'sawtooth', 0.14), 90); },
+  stage: () => [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'square', 0.13), i * 80)),
+  move: () => beep(230, 0.02, 'square', 0.05),
+  rotate: () => beep(460, 0.03, 'square', 0.08),
+  lock: () => beep(150, 0.06, 'square', 0.1),
+  line: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.08, 'square', 0.12), i * 55)),
+  over: () => [400, 300, 220, 150].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'sawtooth', 0.13), i * 110))
+};
+function updateMuteBtn() { $('gameMute').textContent = gameMuted ? '🔇' : '🔊'; }
+$('gameMute').addEventListener('click', () => {
+  gameMuted = !gameMuted; localStorage.setItem('ftp-game-mute', gameMuted ? '1' : '0');
+  updateMuteBtn(); if (!gameMuted) unlockAudio();
+});
+updateMuteBtn();
+
 function openGame() { $('game').classList.add('show'); pushLayer(); showGameMenu(); }
 function _hideGame() { $('game').classList.remove('show'); stopGameLoop(); }
 function stopGameLoop() { gRunning = false; if (gRaf) cancelAnimationFrame(gRaf); gRaf = 0; }
@@ -2069,6 +2104,7 @@ function renderGameOptions() {
 }
 function endGame(win) {
   stopGameLoop();
+  if (win) SFX.stage(); else SFX.over();
   const key = gameMode === 'breakout' ? 'ftp-bo-best' : 'ftp-tet-best';
   const best = Math.max(gScore, Number(localStorage.getItem(key) || 0));
   localStorage.setItem(key, String(best));
@@ -2077,7 +2113,7 @@ function endGame(win) {
   $('gameStart').textContent = '다시 하기';
 }
 document.querySelectorAll('.gm-tab').forEach(t => t.addEventListener('click', () => { gameMode = t.dataset.gmode; showGameMenu(); }));
-$('gameStart').addEventListener('click', () => { if (gameMode === 'breakout') startBreakout(); else startTetris(); });
+$('gameStart').addEventListener('click', () => { unlockAudio(); if (gameMode === 'breakout') startBreakout(); else startTetris(); });
 $('gameClose').addEventListener('click', () => uiBack());
 
 // ── 벽돌깨기 ──
@@ -2129,21 +2165,21 @@ function stepBreakout() {
   if (b.y - b.r < 0) { b.y = b.r; b.vy *= -1; }
   if (b.vy > 0 && b.y + b.r >= p.y && b.y - b.r <= p.y + p.h && b.x >= p.x - p.w/2 && b.x <= p.x + p.w/2) {
     b.y = p.y - b.r; const hit = (b.x - p.x)/(p.w/2); const a = -Math.PI/2 + hit*(Math.PI/3);
-    b.vx = Math.cos(a)*b.speed; b.vy = Math.sin(a)*b.speed;
+    b.vx = Math.cos(a)*b.speed; b.vy = Math.sin(a)*b.speed; SFX.paddle();
   }
   for (const br of boBricks) {
     if (!br.alive) continue;
     if (b.x + b.r > br.x && b.x - b.r < br.x + br.w && b.y + b.r > br.y && b.y - b.r < br.y + br.h) {
-      br.alive = false; gScore += 10; updateBoHud();
+      br.alive = false; gScore += 10; updateBoHud(); SFX.brick();
       const ox = Math.min(b.x + b.r - br.x, br.x + br.w - (b.x - b.r));
       const oy = Math.min(b.y + b.r - br.y, br.y + br.h - (b.y - b.r));
       if (ox < oy) b.vx *= -1; else b.vy *= -1; break;
     }
   }
-  if (b.y - b.r > gH) { boLives--; updateBoHud(); if (boLives <= 0) { endGame(false); return; } boResetBall(); }
+  if (b.y - b.r > gH) { boLives--; updateBoHud(); if (boLives <= 0) { endGame(false); return; } SFX.life(); boResetBall(); }
   if (boBricks.every(br => !br.alive)) {
     if (boStage >= BO_STAGES.length) { endGame(true); return; }
-    boStage++; gScore += 50; updateBoHud(); loadBoStage(boStage);
+    boStage++; gScore += 50; updateBoHud(); SFX.stage(); loadBoStage(boStage);
   }
 }
 function boRR(x, y, w, h, r) { gctx.beginPath(); gctx.moveTo(x+r,y); gctx.arcTo(x+w,y,x+w,y+h,r); gctx.arcTo(x+w,y+h,x,y+h,r); gctx.arcTo(x,y+h,x,y,r); gctx.arcTo(x,y,x+w,y,r); gctx.closePath(); }
@@ -2219,14 +2255,15 @@ function tetLock() {
   if (cleared) {
     gScore += ([0,100,300,500,800][cleared] || 800) * tetLevel;
     tetLines += cleared; tetLevel = tetLevelSel + Math.floor(tetLines / 10); tetDropMs = tetDropInterval();
-  }
+    SFX.line();
+  } else SFX.lock();
   updateTetHud(); spawnPiece();
 }
-function tetMove(dx) { if (gRunning && !tetCollide(tetPiece.m, tetPiece.x + dx, tetPiece.y)) { tetPiece.x += dx; drawTetris(); } }
+function tetMove(dx) { if (gRunning && !tetCollide(tetPiece.m, tetPiece.x + dx, tetPiece.y)) { tetPiece.x += dx; SFX.move(); drawTetris(); } }
 function tetRotate() {
   if (!gRunning) return;
   const nm = rotCW(tetPiece.m);
-  for (const k of [0, -1, 1, -2, 2]) if (!tetCollide(nm, tetPiece.x + k, tetPiece.y)) { tetPiece.m = nm; tetPiece.x += k; drawTetris(); return; }
+  for (const k of [0, -1, 1, -2, 2]) if (!tetCollide(nm, tetPiece.x + k, tetPiece.y)) { tetPiece.m = nm; tetPiece.x += k; SFX.rotate(); drawTetris(); return; }
 }
 function tetSoftDrop() {
   if (!gRunning) return;
