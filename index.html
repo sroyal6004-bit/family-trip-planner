@@ -83,7 +83,7 @@
       color: var(--accent); text-transform: uppercase; margin-bottom: 4px;
     }
     .header-title { font-size: 21px; font-weight: 900; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .credit { font-size: 10px; font-weight: 400; color: var(--muted2); letter-spacing: 0; white-space: nowrap; cursor: pointer; }
+    .credit { font-size: 10px; font-weight: 400; color: #f2c14e; letter-spacing: 0; white-space: nowrap; cursor: pointer; }
     .header-sub { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 300; }
     .back-btn {
       background: none; border: none; color: var(--accent);
@@ -705,7 +705,7 @@
 
 <!-- 동선(경로) 선택 시트 -->
 <div class="sheet" id="sheetRoute">
-  <div class="sheet-title"><span>🧭 동선 한눈에 보기</span><button class="sheet-close" data-close>×</button></div>
+  <div class="sheet-title"><span>🧭 동선파악하기</span><button class="sheet-close" data-close>×</button></div>
   <div style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:14px">
     경로에 넣을 장소를 골라주세요. <b>같은 도시(지역)</b>끼리 골라야 길이 그려져요.<br/>
     (비행기 타는 날은 공항을 빼면 돼요.) 선택한 <b>시간 순서</b>대로 구글지도 경로가 열립니다.
@@ -1297,7 +1297,7 @@ function renderScheduleTab(t, body) {
     const idx = days.indexOf(d) + 1;
     const showRoute = items.length >= 2;
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선 한눈에 보기</button>` : ''}</div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button>` : ''}</div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
@@ -1347,7 +1347,7 @@ function openRouteSheet(date) {
   const t = cur(); if (!t) return;
   routeItems = t.schedule.filter(s => s.date === date)
     .sort((a,b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
-  routeSel = new Set(routeItems.map(s => s.id));   // 기본 전체 선택
+  routeSel = new Set();   // 기본 미선택 (사용자가 직접 고름)
   renderRouteList();
   openSheet('sheetRoute');
 }
