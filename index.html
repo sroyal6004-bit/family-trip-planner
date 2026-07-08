@@ -280,6 +280,29 @@
       color: #06121a; font-size: 16px; font-weight: 700; cursor: pointer; font-family: var(--sans);
     }
     .game-start:active { transform: scale(0.97); }
+    .gm-tabs { display: flex; gap: 8px; }
+    .gm-tab {
+      padding: 10px 18px; border-radius: 10px; background: var(--bg2);
+      border: 1px solid var(--border2); color: var(--muted);
+      font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--sans);
+    }
+    .gm-tab.on { background: #0e2836; border-color: var(--accent2); color: var(--accent); }
+    #gmOptions { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+    #gmOptions .chip-row { justify-content: center; }
+    .gm-opt-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-align: center; }
+    .game-controls {
+      display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 94px;
+      padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+      gap: 8px; align-items: center; justify-content: center;
+      background: rgba(10,13,18,0.72); backdrop-filter: blur(4px);
+    }
+    .game-controls.show { display: flex; }
+    .gctl {
+      flex: 1; max-width: 80px; height: 56px; border-radius: 12px;
+      background: var(--bg3); border: 1px solid var(--border2);
+      color: var(--text); font-size: 22px; cursor: pointer;
+    }
+    .gctl:active { background: var(--bg2); }
 
     /* ── Expenses ── */
     .summary-card {
@@ -639,19 +662,31 @@
   </div>
 </div>
 
-<!-- 미니게임: 벽돌깨기 -->
+<!-- 미니게임 -->
 <div id="game">
   <div class="game-bar">
-    <span class="game-stat" style="font-weight:700;color:var(--accent)">🎮 벽돌깨기</span>
+    <span class="game-stat" id="gameTitle" style="font-weight:700;color:var(--accent)">🎮 게임</span>
     <span class="game-stat" id="gameScore" style="margin-left:auto">점수 0</span>
     <span class="game-stat" id="gameLives">❤️❤️❤️</span>
     <button class="game-close" id="gameClose">×</button>
   </div>
   <div class="game-canvas-wrap" id="gameWrap">
     <canvas id="gameCanvas"></canvas>
+    <div class="game-controls" id="gameControls">
+      <button class="gctl" data-ctl="left">◀</button>
+      <button class="gctl" data-ctl="rotate">⟳</button>
+      <button class="gctl" data-ctl="right">▶</button>
+      <button class="gctl" data-ctl="down">▼</button>
+      <button class="gctl" data-ctl="drop">⏬</button>
+    </div>
     <div class="game-overlay" id="gameMsg">
-      <div class="game-msg-title" id="gameMsgTitle">벽돌깨기</div>
-      <div class="game-msg-sub" id="gameMsgSub">손가락으로 막대를 좌우로 움직여 공을 튕겨요</div>
+      <div class="game-msg-title" id="gameMsgTitle">게임</div>
+      <div class="gm-tabs">
+        <button class="gm-tab on" data-gmode="breakout">🧱 벽돌깨기</button>
+        <button class="gm-tab" data-gmode="tetris">🟦 테트리스</button>
+      </div>
+      <div id="gmOptions"></div>
+      <div class="game-msg-sub" id="gameMsgSub"></div>
       <button class="game-start" id="gameStart">시작하기</button>
     </div>
   </div>
@@ -1978,24 +2013,15 @@ $('joinCode').addEventListener('keydown', e => {
 });
 $('joinGo').addEventListener('click', () => joinByCode($('joinCode').value));
 
-// ═══════════════ 미니게임: 벽돌깨기 ═══════════════
+// ═══════════════ 미니게임 (벽돌깨기 · 테트리스) ═══════════════
 const gc = $('gameCanvas');
 const gctx = gc.getContext('2d');
-let gRaf = 0, gW = 0, gH = 0;
-let gPaddle, gBall, gBricks = [], gScore = 0, gLives = 3, gLaunched = false, gRunning = false, gBest = 0;
-const G_COLS = 7, G_ROWS = 5, G_BRICK_H = 18, G_GAP = 6;
-const G_COLORS = ['#e07a8a', '#f4a94a', '#6fc98a', '#4cc3e8', '#9a7ae0'];
+let gRaf = 0, gW = 0, gH = 0, gRunning = false, gLast = 0, gScore = 0, gameMode = 'breakout';
 
-function openGame() {
-  $('game').classList.add('show');
-  pushLayer();
-  gBest = Number(localStorage.getItem('ftp-game-best') || 0);
-  setupGame();
-  showGameMsg('벽돌깨기', `최고 점수 ${gBest}점 · 막대를 움직여 공을 튕겨요`, '시작하기');
-}
+function openGame() { $('game').classList.add('show'); pushLayer(); showGameMenu(); }
 function _hideGame() { $('game').classList.remove('show'); stopGameLoop(); }
 function stopGameLoop() { gRunning = false; if (gRaf) cancelAnimationFrame(gRaf); gRaf = 0; }
-
+function startGameLoop() { gLast = 0; if (!gRaf) gRaf = requestAnimationFrame(gameLoop); }
 function fitGameCanvas() {
   const wrap = $('gameWrap');
   gW = wrap.clientWidth; gH = wrap.clientHeight;
@@ -2004,94 +2030,250 @@ function fitGameCanvas() {
   gc.style.width = gW + 'px'; gc.style.height = gH + 'px';
   gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-function buildBricks() {
-  gBricks = [];
-  const mx = 10;
-  const bw = (gW - mx * 2 - G_GAP * (G_COLS - 1)) / G_COLS;
-  for (let r = 0; r < G_ROWS; r++)
-    for (let c = 0; c < G_COLS; c++)
-      gBricks.push({ x: mx + c * (bw + G_GAP), y: 56 + r * (G_BRICK_H + G_GAP), w: bw, h: G_BRICK_H, alive: true, color: G_COLORS[r % G_COLORS.length] });
+function gameLoop(ts) {
+  gRaf = 0; if (!gRunning) return;
+  const dt = gLast ? (ts - gLast) : 16; gLast = ts;
+  if (gameMode === 'breakout') { stepBreakout(); if (gRunning) drawBreakout(); }
+  else { stepTetris(dt); if (gRunning) drawTetris(); }
+  if (gRunning) gRaf = requestAnimationFrame(gameLoop);
 }
-function resetBall() {
-  gPaddle = { w: Math.max(64, gW * 0.22), h: 12, x: gW / 2, y: gH - 40 };
-  gBall = { x: gW / 2, y: gPaddle.y - 12, r: 7, vx: 0, vy: 0, speed: Math.max(4.2, gW / 88) };
-  gLaunched = false;
+function hideGameMsg() { $('gameMsg').style.display = 'none'; }
+
+// ── 메뉴 ──
+let boSpeedIdx = 1, boStageSel = 1, tetLevelSel = 1;
+const BO_SPEEDS = [['느림', 0.72], ['보통', 1.0], ['빠름', 1.4]];
+function showGameMenu(title) {
+  stopGameLoop();
+  fitGameCanvas();
+  $('gameControls').classList.remove('show');
+  $('gameMsgTitle').textContent = title || (gameMode === 'breakout' ? '🧱 벽돌깨기' : '🟦 테트리스');
+  document.querySelectorAll('.gm-tab').forEach(t => t.classList.toggle('on', t.dataset.gmode === gameMode));
+  renderGameOptions();
+  $('gameMsg').style.display = 'flex';
+  gctx.clearRect(0, 0, gW, gH); gctx.fillStyle = '#0a0d12'; gctx.fillRect(0, 0, gW, gH);
 }
-function setupGame() {
-  fitGameCanvas(); gScore = 0; gLives = 3; buildBricks(); resetBall(); updateGameHud(); drawGame();
+function renderGameOptions() {
+  const o = $('gmOptions');
+  if (gameMode === 'breakout') {
+    o.innerHTML =
+      `<div><div class="gm-opt-label">공 속도</div><div class="chip-row">${BO_SPEEDS.map((s,i) => `<span class="chip ${boSpeedIdx===i?'on':''}" data-sp="${i}">${s[0]}</span>`).join('')}</div></div>` +
+      `<div><div class="gm-opt-label">스테이지</div><div class="chip-row">${BO_STAGES.map((_,i) => `<span class="chip ${boStageSel===i+1?'on':''}" data-st="${i+1}">${i+1}</span>`).join('')}</div></div>`;
+    o.querySelectorAll('[data-sp]').forEach(c => c.addEventListener('click', () => { boSpeedIdx = +c.dataset.sp; renderGameOptions(); }));
+    o.querySelectorAll('[data-st]').forEach(c => c.addEventListener('click', () => { boStageSel = +c.dataset.st; renderGameOptions(); }));
+    $('gameMsgSub').textContent = `막대를 움직여 공을 튕겨 벽돌을 모두 깨세요 · 총 ${BO_STAGES.length} 스테이지`;
+  } else {
+    o.innerHTML = `<div><div class="gm-opt-label">시작 레벨 (속도)</div><div class="chip-row">${[1,2,3,4,5].map(l => `<span class="chip ${tetLevelSel===l?'on':''}" data-lv="${l}">Lv ${l}</span>`).join('')}</div></div>`;
+    o.querySelectorAll('[data-lv]').forEach(c => c.addEventListener('click', () => { tetLevelSel = +c.dataset.lv; renderGameOptions(); }));
+    $('gameMsgSub').textContent = '아래 버튼으로 이동/회전 · 줄을 채워 지우세요';
+  }
 }
-function launchBall() {
-  gLaunched = true;
-  const ang = -Math.PI / 2 + (Math.random() * 0.6 - 0.3);
-  gBall.vx = Math.cos(ang) * gBall.speed; gBall.vy = Math.sin(ang) * gBall.speed;
-}
-function updateGameHud() {
-  $('gameScore').textContent = '점수 ' + gScore;
-  $('gameLives').textContent = gLives > 0 ? '❤️'.repeat(gLives) : '—';
-}
-function startGame() { hideGameMsg(); gRunning = true; if (!gLaunched) launchBall(); if (!gRaf) gRaf = requestAnimationFrame(gameLoop); }
 function endGame(win) {
   stopGameLoop();
-  if (gScore > gBest) { gBest = gScore; localStorage.setItem('ftp-game-best', String(gBest)); }
-  showGameMsg(win ? '🎉 클리어!' : '게임 오버', `점수 ${gScore}점 · 최고 ${gBest}점`, '다시 하기');
+  const key = gameMode === 'breakout' ? 'ftp-bo-best' : 'ftp-tet-best';
+  const best = Math.max(gScore, Number(localStorage.getItem(key) || 0));
+  localStorage.setItem(key, String(best));
+  showGameMenu(win ? '🎉 클리어!' : '게임 오버');
+  $('gameMsgSub').textContent = `점수 ${gScore}점 · 최고 ${best}점`;
+  $('gameStart').textContent = '다시 하기';
 }
-function gameLoop() { gRaf = 0; if (gRunning) { stepGame(); drawGame(); gRaf = requestAnimationFrame(gameLoop); } }
-function stepGame() {
-  if (!gLaunched) return;
-  const b = gBall, p = gPaddle;
+document.querySelectorAll('.gm-tab').forEach(t => t.addEventListener('click', () => { gameMode = t.dataset.gmode; showGameMenu(); }));
+$('gameStart').addEventListener('click', () => { if (gameMode === 'breakout') startBreakout(); else startTetris(); });
+$('gameClose').addEventListener('click', () => uiBack());
+
+// ── 벽돌깨기 ──
+const BO_COLORS = ['#e07a8a', '#f4a94a', '#6fc98a', '#4cc3e8', '#9a7ae0'];
+const BO_GAP = 6, BO_BRICK_H = 18;
+const BO_STAGES = [
+  ['#######','#######','#######','#######','#######'],
+  ['#.#.#.#','.#.#.#.','#.#.#.#','.#.#.#.','#.#.#.#'],
+  ['...#...','..###..','.#####.','#######','#######'],
+  ['#######','#.....#','#.###.#','#.....#','#######'],
+  ['#.....#','.#...#.','..#.#..','...#...','..#.#..']
+];
+let boPaddle, boBall, boBricks = [], boLives = 3, boStage = 1, boSpeedMul = 1;
+function startBreakout() {
+  hideGameMsg(); gameMode = 'breakout';
+  fitGameCanvas(); $('gameControls').classList.remove('show');
+  gScore = 0; boLives = 3; boStage = boStageSel; boSpeedMul = BO_SPEEDS[boSpeedIdx][1];
+  loadBoStage(boStage); updateBoHud();
+  gRunning = true; startGameLoop();
+}
+function loadBoStage(stage) {
+  const pat = BO_STAGES[(stage - 1) % BO_STAGES.length];
+  const cols = pat[0].length, mx = 10;
+  const bw = (gW - mx * 2 - BO_GAP * (cols - 1)) / cols;
+  boBricks = [];
+  for (let r = 0; r < pat.length; r++)
+    for (let c = 0; c < cols; c++)
+      if (pat[r][c] === '#')
+        boBricks.push({ x: mx + c * (bw + BO_GAP), y: 56 + r * (BO_BRICK_H + BO_GAP), w: bw, h: BO_BRICK_H, alive: true, color: BO_COLORS[r % BO_COLORS.length] });
+  boResetBall();
+}
+function boResetBall() {
+  boPaddle = { w: Math.max(64, gW * 0.22), h: 12, x: gW / 2, y: gH - 40 };
+  const sp = Math.max(4.2, gW / 88) * boSpeedMul * (1 + (boStage - 1) * 0.05);
+  boBall = { x: gW / 2, y: gH - 54, r: 7, vx: 0, vy: 0, speed: sp, launched: false };
+}
+function boLaunch() { boBall.launched = true; const a = -Math.PI/2 + (Math.random()*0.6 - 0.3); boBall.vx = Math.cos(a)*boBall.speed; boBall.vy = Math.sin(a)*boBall.speed; }
+function updateBoHud() {
+  $('gameTitle').textContent = '🧱 벽돌깨기';
+  $('gameScore').textContent = `Stage ${boStage} · ${gScore}점`;
+  $('gameLives').textContent = boLives > 0 ? '❤️'.repeat(boLives) : '—';
+}
+function stepBreakout() {
+  if (!boBall.launched) boLaunch();
+  const b = boBall, p = boPaddle;
   b.x += b.vx; b.y += b.vy;
   if (b.x - b.r < 0) { b.x = b.r; b.vx *= -1; }
   if (b.x + b.r > gW) { b.x = gW - b.r; b.vx *= -1; }
   if (b.y - b.r < 0) { b.y = b.r; b.vy *= -1; }
-  if (b.vy > 0 && b.y + b.r >= p.y && b.y - b.r <= p.y + p.h && b.x >= p.x - p.w / 2 && b.x <= p.x + p.w / 2) {
-    b.y = p.y - b.r;
-    const hit = (b.x - p.x) / (p.w / 2);
-    const ang = -Math.PI / 2 + hit * (Math.PI / 3);
-    b.vx = Math.cos(ang) * b.speed; b.vy = Math.sin(ang) * b.speed;
+  if (b.vy > 0 && b.y + b.r >= p.y && b.y - b.r <= p.y + p.h && b.x >= p.x - p.w/2 && b.x <= p.x + p.w/2) {
+    b.y = p.y - b.r; const hit = (b.x - p.x)/(p.w/2); const a = -Math.PI/2 + hit*(Math.PI/3);
+    b.vx = Math.cos(a)*b.speed; b.vy = Math.sin(a)*b.speed;
   }
-  for (const br of gBricks) {
+  for (const br of boBricks) {
     if (!br.alive) continue;
     if (b.x + b.r > br.x && b.x - b.r < br.x + br.w && b.y + b.r > br.y && b.y - b.r < br.y + br.h) {
-      br.alive = false; gScore += 10; updateGameHud();
+      br.alive = false; gScore += 10; updateBoHud();
       const ox = Math.min(b.x + b.r - br.x, br.x + br.w - (b.x - b.r));
       const oy = Math.min(b.y + b.r - br.y, br.y + br.h - (b.y - b.r));
-      if (ox < oy) b.vx *= -1; else b.vy *= -1;
-      break;
+      if (ox < oy) b.vx *= -1; else b.vy *= -1; break;
     }
   }
-  if (b.y - b.r > gH) {
-    gLives--; updateGameHud();
-    if (gLives <= 0) { endGame(false); return; }
-    resetBall(); launchBall();
+  if (b.y - b.r > gH) { boLives--; updateBoHud(); if (boLives <= 0) { endGame(false); return; } boResetBall(); }
+  if (boBricks.every(br => !br.alive)) {
+    if (boStage >= BO_STAGES.length) { endGame(true); return; }
+    boStage++; gScore += 50; updateBoHud(); loadBoStage(boStage);
   }
-  if (gBricks.every(br => !br.alive)) { endGame(true); return; }
 }
-function gRoundRect(x, y, w, h, r) {
-  gctx.beginPath(); gctx.moveTo(x + r, y);
-  gctx.arcTo(x + w, y, x + w, y + h, r); gctx.arcTo(x + w, y + h, x, y + h, r);
-  gctx.arcTo(x, y + h, x, y, r); gctx.arcTo(x, y, x + w, y, r); gctx.closePath();
+function boRR(x, y, w, h, r) { gctx.beginPath(); gctx.moveTo(x+r,y); gctx.arcTo(x+w,y,x+w,y+h,r); gctx.arcTo(x+w,y+h,x,y+h,r); gctx.arcTo(x,y+h,x,y,r); gctx.arcTo(x,y,x+w,y,r); gctx.closePath(); }
+function drawBreakout() {
+  gctx.clearRect(0,0,gW,gH); gctx.fillStyle = '#0a0d12'; gctx.fillRect(0,0,gW,gH);
+  for (const br of boBricks) { if (!br.alive) continue; gctx.fillStyle = br.color; boRR(br.x,br.y,br.w,br.h,4); gctx.fill(); }
+  gctx.fillStyle = '#4cc3e8'; boRR(boPaddle.x - boPaddle.w/2, boPaddle.y, boPaddle.w, boPaddle.h, 6); gctx.fill();
+  gctx.fillStyle = '#eaf0f4'; gctx.beginPath(); gctx.arc(boBall.x, boBall.y, boBall.r, 0, Math.PI*2); gctx.fill();
 }
-function drawGame() {
-  gctx.clearRect(0, 0, gW, gH);
-  gctx.fillStyle = '#0a0d12'; gctx.fillRect(0, 0, gW, gH);
-  for (const br of gBricks) { if (!br.alive) continue; gctx.fillStyle = br.color; gRoundRect(br.x, br.y, br.w, br.h, 4); gctx.fill(); }
-  gctx.fillStyle = '#4cc3e8'; gRoundRect(gPaddle.x - gPaddle.w / 2, gPaddle.y, gPaddle.w, gPaddle.h, 6); gctx.fill();
-  gctx.fillStyle = '#eaf0f4'; gctx.beginPath(); gctx.arc(gBall.x, gBall.y, gBall.r, 0, Math.PI * 2); gctx.fill();
-}
-function showGameMsg(t, s, btn) { $('gameMsgTitle').textContent = t; $('gameMsgSub').textContent = s; $('gameStart').textContent = btn || '시작하기'; $('gameMsg').style.display = 'flex'; }
-function hideGameMsg() { $('gameMsg').style.display = 'none'; }
 function gamePointer(e) {
-  if (!gPaddle) return;
+  if (gameMode !== 'breakout' || !boPaddle || !gRunning) return;
   const rect = gc.getBoundingClientRect();
   const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-  gPaddle.x = Math.max(gPaddle.w / 2, Math.min(gW - gPaddle.w / 2, cx));
-  if (!gLaunched) { gBall.x = gPaddle.x; drawGame(); }
+  boPaddle.x = Math.max(boPaddle.w/2, Math.min(gW - boPaddle.w/2, cx));
   if (e.cancelable) e.preventDefault();
 }
 gc.addEventListener('pointermove', gamePointer);
 gc.addEventListener('touchmove', gamePointer, { passive: false });
-$('gameStart').addEventListener('click', startGame);
-$('gameClose').addEventListener('click', () => uiBack());
+
+// ── 테트리스 ──
+const TET_COLS = 10, TET_ROWS = 18, TET_CTRL_H = 100;
+const TETROMINOES = {
+  I: { c:'#4cc3e8', m:[[1,1,1,1]] }, O: { c:'#f4a94a', m:[[1,1],[1,1]] },
+  T: { c:'#9a7ae0', m:[[1,1,1],[0,1,0]] }, S: { c:'#6fc98a', m:[[0,1,1],[1,1,0]] },
+  Z: { c:'#e07a8a', m:[[1,1,0],[0,1,1]] }, J: { c:'#5a8fe0', m:[[1,0,0],[1,1,1]] },
+  L: { c:'#e8a24a', m:[[0,0,1],[1,1,1]] }
+};
+const TET_KEYS = Object.keys(TETROMINOES);
+let tetBoard, tetPiece, tetLevel = 1, tetLines = 0, tetDropMs = 800, tetAcc = 0, tetCell = 20, tetX0 = 0, tetY0 = 0;
+function startTetris() {
+  hideGameMsg(); gameMode = 'tetris';
+  fitGameCanvas();
+  const availH = gH - TET_CTRL_H;
+  tetCell = Math.max(10, Math.floor(Math.min(gW / TET_COLS, availH / TET_ROWS)));
+  tetX0 = Math.floor((gW - tetCell * TET_COLS) / 2); tetY0 = 8;
+  tetBoard = Array.from({ length: TET_ROWS }, () => Array(TET_COLS).fill(0));
+  tetLevel = tetLevelSel; tetLines = 0; gScore = 0; tetAcc = 0; tetDropMs = tetDropInterval();
+  $('gameControls').classList.add('show');
+  spawnPiece(); updateTetHud();
+  gRunning = true; startGameLoop();
+}
+function tetDropInterval() { return Math.max(90, 820 - (tetLevel - 1) * 70); }
+function updateTetHud() {
+  $('gameTitle').textContent = '🟦 테트리스';
+  $('gameScore').textContent = `${gScore}점 · Lv ${tetLevel}`;
+  $('gameLives').textContent = `${tetLines}줄`;
+}
+function rotCW(m) { return m[0].map((_, i) => m.map(row => row[i]).reverse()); }
+function spawnPiece() {
+  const k = TET_KEYS[Math.floor(Math.random() * TET_KEYS.length)];
+  const t = TETROMINOES[k];
+  const m = t.m.map(r => r.slice());
+  tetPiece = { m, c: t.c, x: Math.floor((TET_COLS - m[0].length) / 2), y: 0 };
+  if (tetCollide(m, tetPiece.x, tetPiece.y)) endGame(false);
+}
+function tetCollide(m, px, py) {
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    const nx = px + c, ny = py + r;
+    if (nx < 0 || nx >= TET_COLS || ny >= TET_ROWS) return true;
+    if (ny >= 0 && tetBoard[ny][nx]) return true;
+  }
+  return false;
+}
+function tetLock() {
+  const m = tetPiece.m;
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++)
+    if (m[r][c]) { const ny = tetPiece.y + r, nx = tetPiece.x + c; if (ny >= 0) tetBoard[ny][nx] = tetPiece.c; }
+  let cleared = 0;
+  for (let r = TET_ROWS - 1; r >= 0; r--) {
+    if (tetBoard[r].every(v => v)) { tetBoard.splice(r, 1); tetBoard.unshift(Array(TET_COLS).fill(0)); cleared++; r++; }
+  }
+  if (cleared) {
+    gScore += ([0,100,300,500,800][cleared] || 800) * tetLevel;
+    tetLines += cleared; tetLevel = tetLevelSel + Math.floor(tetLines / 10); tetDropMs = tetDropInterval();
+  }
+  updateTetHud(); spawnPiece();
+}
+function tetMove(dx) { if (gRunning && !tetCollide(tetPiece.m, tetPiece.x + dx, tetPiece.y)) { tetPiece.x += dx; drawTetris(); } }
+function tetRotate() {
+  if (!gRunning) return;
+  const nm = rotCW(tetPiece.m);
+  for (const k of [0, -1, 1, -2, 2]) if (!tetCollide(nm, tetPiece.x + k, tetPiece.y)) { tetPiece.m = nm; tetPiece.x += k; drawTetris(); return; }
+}
+function tetSoftDrop() {
+  if (!gRunning) return;
+  if (!tetCollide(tetPiece.m, tetPiece.x, tetPiece.y + 1)) { tetPiece.y++; gScore += 1; updateTetHud(); }
+  else tetLock();
+  tetAcc = 0; drawTetris();
+}
+function tetHardDrop() {
+  if (!gRunning) return;
+  let d = 0; while (!tetCollide(tetPiece.m, tetPiece.x, tetPiece.y + 1)) { tetPiece.y++; d++; }
+  gScore += d * 2; updateTetHud(); tetLock(); tetAcc = 0; drawTetris();
+}
+function stepTetris(dt) {
+  tetAcc += dt;
+  if (tetAcc >= tetDropMs) {
+    tetAcc = 0;
+    if (!tetCollide(tetPiece.m, tetPiece.x, tetPiece.y + 1)) tetPiece.y++;
+    else tetLock();
+  }
+}
+function drawTetCell(cx, cy, color) {
+  if (cy < 0) return;
+  const x = tetX0 + cx * tetCell, y = tetY0 + cy * tetCell;
+  gctx.fillStyle = color; gctx.fillRect(x + 1, y + 1, tetCell - 2, tetCell - 2);
+}
+function drawTetris() {
+  gctx.clearRect(0, 0, gW, gH); gctx.fillStyle = '#0a0d12'; gctx.fillRect(0, 0, gW, gH);
+  gctx.fillStyle = '#0d1219'; gctx.fillRect(tetX0, tetY0, tetCell * TET_COLS, tetCell * TET_ROWS);
+  for (let r = 0; r < TET_ROWS; r++) for (let c = 0; c < TET_COLS; c++) if (tetBoard[r][c]) drawTetCell(c, r, tetBoard[r][c]);
+  if (tetPiece) { const m = tetPiece.m; for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) drawTetCell(tetPiece.x + c, tetPiece.y + r, tetPiece.c); }
+  gctx.strokeStyle = '#263547'; gctx.lineWidth = 2; gctx.strokeRect(tetX0, tetY0, tetCell * TET_COLS, tetCell * TET_ROWS);
+}
+$('gameControls').querySelectorAll('[data-ctl]').forEach(btn =>
+  btn.addEventListener('click', () => {
+    if (gameMode !== 'tetris' || !gRunning) return;
+    const a = btn.dataset.ctl;
+    if (a === 'left') tetMove(-1); else if (a === 'right') tetMove(1);
+    else if (a === 'rotate') tetRotate(); else if (a === 'down') tetSoftDrop(); else if (a === 'drop') tetHardDrop();
+  }));
+document.addEventListener('keydown', e => {
+  if (!$('game').classList.contains('show') || gameMode !== 'tetris' || !gRunning) return;
+  if (e.key === 'ArrowLeft') { tetMove(-1); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { tetMove(1); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { tetRotate(); e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { tetSoftDrop(); e.preventDefault(); }
+  else if (e.key === ' ') { tetHardDrop(); e.preventDefault(); }
+});
 
 // ═══════════════ PWA ═══════════════
 window.addEventListener('beforeinstallprompt', e => {
