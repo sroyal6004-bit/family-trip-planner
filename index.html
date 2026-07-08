@@ -82,7 +82,8 @@
       font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
       color: var(--accent); text-transform: uppercase; margin-bottom: 4px;
     }
-    .header-title { font-size: 21px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+    .header-title { font-size: 21px; font-weight: 900; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .credit { font-size: 10px; font-weight: 400; color: var(--muted2); letter-spacing: 0; white-space: nowrap; cursor: pointer; }
     .header-sub { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 300; }
     .back-btn {
       background: none; border: none; color: var(--accent);
@@ -752,6 +753,19 @@ let currentTripId = null;
 let currentTab = 'schedule';
 let dayFilter = 'all';
 let deferredPrompt = null;
+let ownerMode = false, _creditTaps = 0, _creditTimer = null;
+function creditTap() {
+  _creditTaps++;
+  clearTimeout(_creditTimer);
+  _creditTimer = setTimeout(() => { _creditTaps = 0; }, 2000);
+  if (_creditTaps >= 5) {
+    _creditTaps = 0;
+    ownerMode = !ownerMode;
+    localStorage.setItem('ftp-owner', ownerMode ? '1' : '0');
+    toast(ownerMode ? '호스트 모드 ON — 새 여행 만들기 표시' : '호스트 모드 OFF — 참여만 가능');
+    render();
+  }
+}
 
 // 편집 상태
 let formMembers = [];
@@ -1175,18 +1189,21 @@ function renderHome() {
   fab.classList.remove('show');
   headerEl.innerHTML = `
     <div class="header-badge">Family Trip · PWA</div>
-    <div class="header-title">🧳 우리 &amp; 여행</div>
+    <div class="header-title">🧳 우리 &amp; 여행 <span class="credit" id="credit">made by JHY with Claude</span></div>
     <div class="header-sub">일정도 같이 보고, 쓴 돈도 같이 정산해요${cloudOn ? ' · ☁️ 실시간 공유' : ''}</div>`;
+  const cr = $('credit'); if (cr) cr.addEventListener('click', creditTap);
 
   const today = dstr(new Date());
   let html = '';
-  // 새 여행 만들기 / 여행 코드로 참여하기 — 항상 맨 위
-  html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
+  // 새 여행 만들기(호스트만) / 여행 코드로 참여하기 — 항상 맨 위
+  if (ownerMode) html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
   if (cloudOn) html += `<button class="add-btn ghost" id="joinTripBtn">🔗 여행 코드로 참여하기</button>`;
   html += `<button class="add-btn ghost" id="gameBtn" style="margin-top:10px">🎮 심심풀이 게임 · 벽돌깨기</button>`;
 
   if (!db.trips.length) {
-    html += `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>위에서 첫 여행을 만들어 보세요!</div>`;
+    html += ownerMode
+      ? `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>위에서 첫 여행을 만들어 보세요!</div>`
+      : `<div class="empty"><div class="big">✈️</div>참여한 여행이 없어요.<br/>위 "여행 코드로 참여하기"로 들어가세요.</div>`;
   } else {
     html += `<div class="divider"><span class="divider-label">📋 내 여행</span><div class="divider-line"></div></div>`;
     const sorted = [...db.trips].sort((a,b) => b.startDate.localeCompare(a.startDate));
@@ -1217,7 +1234,8 @@ function renderHome() {
   }
   mainEl.innerHTML = html;
 
-  $('newTripBtn').addEventListener('click', () => openTripSheet(null));
+  const nb = $('newTripBtn');
+  if (nb) nb.addEventListener('click', () => openTripSheet(null));
   const jb = $('joinTripBtn');
   if (jb) jb.addEventListener('click', openJoinSheet);
   const gb = $('gameBtn');
@@ -2379,6 +2397,11 @@ if ('serviceWorker' in navigator) {
 // ═══════════════ 시작 ═══════════════
 cloudOn = initCloud();
 load();
+// 호스트 모드 기본값: 이미 만든 여행이 있는 기기(=호스트)는 ON, 새로 참여하는 기기는 OFF
+if (localStorage.getItem('ftp-owner') === null) {
+  ownerMode = db.trips.length > 0;
+  localStorage.setItem('ftp-owner', ownerMode ? '1' : '0');
+} else ownerMode = localStorage.getItem('ftp-owner') === '1';
 startSync();
 try { history.replaceState({ ftp: 0 }, ''); } catch (e) {}   // 홈 = 기준점
 render();
