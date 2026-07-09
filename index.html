@@ -1243,15 +1243,14 @@ function renderHome() {
 
   const today = dstr(new Date());
   let html = '';
-  // 새 여행 만들기(호스트만) / 여행 코드로 참여하기 — 항상 맨 위
+  // 새 여행 만들기(호스트만) — 참여는 공유 링크로 자동
   if (ownerMode) html += `<button class="add-btn" id="newTripBtn">＋ 새 여행 만들기</button>`;
-  if (cloudOn) html += `<button class="add-btn ghost" id="joinTripBtn">🔗 여행 코드로 참여하기</button>`;
-  html += `<button class="add-btn ghost" id="gameBtn" style="margin-top:10px">🎮 심심풀이 게임 · 벽돌깨기</button>`;
+  html += `<button class="add-btn ghost" id="gameBtn" style="margin-top:${ownerMode ? '10px' : '4px'}">🎮 심심풀이 게임 · 벽돌깨기</button>`;
 
   if (!db.trips.length) {
     html += ownerMode
       ? `<div class="empty"><div class="big">✈️</div>아직 여행이 없어요.<br/>위에서 첫 여행을 만들어 보세요!</div>`
-      : `<div class="empty"><div class="big">✈️</div>참여한 여행이 없어요.<br/>위 "여행 코드로 참여하기"로 들어가세요.</div>`;
+      : `<div class="empty"><div class="big">✈️</div>참여한 여행이 없어요.<br/>가족이 보내준 <b>참여 링크</b>를 누르면 자동으로 들어와요.</div>`;
   } else {
     html += `<div class="divider"><span class="divider-label">📋 내 여행</span><div class="divider-line"></div></div>`;
     const sorted = [...db.trips].sort((a,b) => b.startDate.localeCompare(a.startDate));
@@ -1284,8 +1283,6 @@ function renderHome() {
 
   const nb = $('newTripBtn');
   if (nb) nb.addEventListener('click', () => openTripSheet(null));
-  const jb = $('joinTripBtn');
-  if (jb) jb.addEventListener('click', openJoinSheet);
   const gb = $('gameBtn');
   if (gb) gb.addEventListener('click', openGame);
   mainEl.querySelectorAll('.trip-card').forEach(c =>
