@@ -991,6 +991,33 @@ async function joinByCode(code) {
     joinStatus(`${text}  [${code || 'unknown'}]`, 'var(--red)');
   }
 }
+// URL에 여행 코드가 있으면(?trip=CODE 또는 #CODE) 자동으로 그 여행을 열기
+async function autoOpenFromUrl() {
+  let code = '';
+  try { code = new URLSearchParams(location.search).get('trip') || ''; } catch (e) {}
+  if (!code && location.hash) code = location.hash.replace(/^#/, '');
+  code = (code || '').trim().toUpperCase();
+  if (!code) return;
+  let trip = db.trips.find(t => t.code === code);
+  if (!trip && cloudOn) {
+    try {
+      const snap = await fdb.collection('trips').doc(code).get();
+      if (snap.exists) {
+        trip = normalizeTrip({ ...snap.data(), cloud: true });
+        db.trips.push(trip);
+        applyingRemote = true; save(); applyingRemote = false;
+        subscribeTrip(code);
+      }
+    } catch (e) {}
+  }
+  if (trip) {
+    currentTripId = trip.id; view = 'trip'; currentTab = 'schedule'; dayFilter = 'all';
+    render(); pushLayer();
+    toast(`"${trip.name}" 여행을 열었어요`);
+  } else if (cloudOn) {
+    toast('링크의 여행을 찾을 수 없어요');
+  }
+}
 function enableCloud(t) {
   if (!cloudOn) { toast('실시간 공유가 아직 설정되지 않았어요'); return; }
   t.cloud = true;
@@ -1732,7 +1759,7 @@ function renderSettingsTab(t, body) {
     html += `<div class="code-box">
       <div style="font-size:12px;color:var(--muted);text-align:center">가족에게 이 코드를 알려주세요</div>
       <div class="code-value">${t.code}</div>
-      <div class="code-hint">가족이 앱에서 <b>"여행 코드로 참여하기"</b>에 이 코드를 입력하면, 누가 일정·경비를 수정해도 <b>모두에게 바로 반영</b>돼요.</div>
+      <div class="code-hint">아래 <b>"코드·앱 주소 공유하기"</b>로 링크를 보내면, 가족이 <b>링크만 눌러도 바로 참여</b>돼요. (코드를 직접 입력해도 됩니다.) 누가 수정하든 <b>모두에게 바로 반영</b>돼요.</div>
     </div>
     <button class="share-btn" id="shareCodeBtn">📤 코드 · 앱 주소 공유하기</button>`;
   } else if (cloudOn && !t.cloud) {
@@ -1757,9 +1784,10 @@ function renderSettingsTab(t, body) {
 
   const scb = $('shareCodeBtn');
   if (scb) scb.addEventListener('click', async () => {
-    const text = `🧳 "${t.name}" 가족여행에 참여하세요!\n\n앱 주소: ${location.origin}${location.pathname}\n여행 코드: ${t.code}\n\n앱에서 "여행 코드로 참여하기"에 코드를 입력하면 돼요.`;
+    const link = `${location.origin}${location.pathname}?trip=${t.code}`;
+    const text = `🧳 "${t.name}" 여행에 참여하세요!\n\n아래 링크만 누르면 바로 참여돼요 👇\n${link}\n\n(여행 코드: ${t.code})`;
     if (navigator.share) { try { await navigator.share({ title: t.name, text }); return; } catch {} }
-    try { await navigator.clipboard.writeText(text); toast('공유 문구를 복사했어요!'); }
+    try { await navigator.clipboard.writeText(text); toast('공유 링크를 복사했어요!'); }
     catch { prompt('아래 내용을 복사하세요', text); }
   });
   const ecb = $('enableCloudBtn');
@@ -2494,6 +2522,7 @@ if (localStorage.getItem('ftp-owner') === null) {
 startSync();
 try { history.replaceState({ ftp: 0 }, ''); } catch (e) {}   // 홈 = 기준점
 render();
+autoOpenFromUrl();   // 링크에 코드가 있으면 해당 여행 자동 열기
 </script>
 </body>
 </html>
