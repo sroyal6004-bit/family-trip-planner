@@ -163,6 +163,16 @@
     .mfield label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
     .mfield-row { display: flex; gap: 10px; }
     .mfield-row .mfield { flex: 1; min-width: 0; }
+    .mem-photos { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .mem-thumb { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; display: block; }
+    .mem-addphoto {
+      width: 52px; height: 52px; border-radius: 8px;
+      background: var(--bg3); border: 1px dashed var(--border2);
+      color: var(--muted); cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    }
+    .mem-addphoto span:last-child { font-size: 9px; font-weight: 700; }
+    .mem-addphoto:active { background: var(--bg2); }
 
     /* ── Chips ── */
     .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1077,7 +1087,7 @@ function subscribePhotos(code) {
         changed = true;
       }
     });
-    if (changed && view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense')) render();
+    if (changed && view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense' || currentTab === 'member')) render();
   }, err => console.warn('photo snapshot err', err));
 }
 function pushPhotoCloud(trip, photo) {
@@ -1097,7 +1107,7 @@ async function loadTripMedia(t) {
   loadedPhotoCode = t.code;
   try { tripPhotos = await idbGetByTrip(t.code); } catch { tripPhotos = []; }
   if (t.cloud) subscribePhotos(t.code);
-  if (view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense')) render();
+  if (view === 'trip' && (currentTab === 'schedule' || currentTab === 'expense' || currentTab === 'member')) render();
 }
 function photosFor(schedId) {
   return tripPhotos.filter(p => p.schedId === schedId).sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
@@ -1641,11 +1651,19 @@ function renderMemberTab(t, body) {
         <div class="mfield"><label>생년월일</label><input type="date" data-mid="${m.id}" data-field="birth" value="${esc(m.birth || '')}"/></div>
         <div class="mfield"><label>연락처</label><input type="tel" data-mid="${m.id}" data-field="phone" value="${esc(m.phone || '')}" placeholder="010-0000-0000" maxlength="20"/></div>
       </div>
+      <div class="mfield" style="margin-top:10px">
+        <label>여권 사진</label>
+        <div class="mem-photos">
+          ${photosFor(m.id).map(p => `<img class="mem-thumb" data-photo="${p.id}" src="${p.data}" alt="여권"/>`).join('')}
+          <button class="mem-addphoto" data-addphoto-mem="${m.id}"><span style="font-size:16px">📷</span><span>올리기</span></button>
+        </div>
+      </div>
     </div>`).join('');
   html += `<div class="member-input-row" style="margin-top:6px">
       <input id="newMemberName" placeholder="새 멤버 이름" maxlength="10"/>
       <button id="addMemberBtn">＋ 추가</button>
-    </div>`;
+    </div>
+    <button class="share-btn" id="shareMembers" style="margin-top:14px">📤 멤버 정보 공유하기</button>`;
   body.innerHTML = html;
 
   $('tripTheme').addEventListener('change', e => { t.theme = e.target.value.trim(); save(); syncPush(t); });
@@ -1667,12 +1685,41 @@ function renderMemberTab(t, body) {
       const used = t.expenses.some(e => e.payerId === id || e.splitIds.includes(id));
       if (used) { toast('경비 기록에 있는 멤버는 삭제할 수 없어요'); return; }
       if (t.members.length <= 1) { toast('멤버는 1명 이상 있어야 해요'); return; }
-      if (!confirm(`${memberName(t, id)}님을 뺄까요?`)) return;
+      if (!confirm(`${memberName(t, id)}님을 뺄까요?\n등록한 여권 사진도 함께 삭제돼요.`)) return;
       t.members = t.members.filter(m => m.id !== id);
       delete t.dues[id];
       if (t.treasurerId === id) t.treasurerId = t.members[0] ? t.members[0].id : null;
       save(); syncPush(t); render();
+      deletePhotosForSched(id);
     }));
+  body.querySelectorAll('[data-addphoto-mem]').forEach(b =>
+    b.addEventListener('click', () => { photoTargetSched = b.dataset.addphotoMem; $('photoInput').value = ''; $('photoInput').click(); }));
+  body.querySelectorAll('.mem-thumb[data-photo]').forEach(im =>
+    im.addEventListener('click', () => openLightbox(im.dataset.photo)));
+  $('shareMembers').addEventListener('click', () => shareMembers(t));
+}
+function memberInfoText(t) {
+  const L = [];
+  L.push(`🧳 ${t.name} — 멤버 정보`);
+  if (t.theme) L.push(`주제: ${t.theme}`);
+  L.push(`기간: ${fmtRange(t)}`);
+  L.push('');
+  for (const m of t.members) {
+    L.push(`👤 ${m.name}`);
+    if (m.enName) L.push(`· 영문이름: ${m.enName}`);
+    if (m.passport) L.push(`· 여권번호: ${m.passport}`);
+    if (m.passportExp) L.push(`· 여권만료: ${m.passportExp}`);
+    if (m.birth) L.push(`· 생년월일: ${m.birth}`);
+    if (m.phone) L.push(`· 연락처: ${m.phone}`);
+    L.push('');
+  }
+  return L.join('\n').trim();
+}
+async function shareMembers(t) {
+  const text = memberInfoText(t);
+  if (navigator.share) { try { await navigator.share({ title: `${t.name} 멤버 정보`, text }); return; } catch {} }
+  try { await navigator.clipboard.writeText(text); toast('멤버 정보를 복사했어요! (여권 사진은 앱에서 확인)'); }
+  catch { prompt('아래 내용을 복사하세요', text); }
 }
 
 // ── 설정 탭 ──
