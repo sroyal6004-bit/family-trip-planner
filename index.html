@@ -148,11 +148,21 @@
       position: sticky; top: calc(env(safe-area-inset-top, 0px) + 92px); z-index: 9;
     }
     .tab {
-      flex: 1; padding: 10px 4px; border: none; border-radius: 9px;
+      flex: 1; padding: 10px 2px; border: none; border-radius: 9px;
       background: transparent; color: var(--muted);
-      font-size: 13px; font-weight: 500; cursor: pointer;
+      font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
     }
     .tab.on { background: var(--bg3); color: var(--accent); font-weight: 700; }
+
+    /* ── 멤버 탭 ── */
+    .mcard { background: var(--bg2); border: 1px solid var(--border2); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    .mcard-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .mcard-name { font-size: 15px; font-weight: 700; }
+    .mfield { margin-bottom: 10px; }
+    .mfield:last-child { margin-bottom: 0; }
+    .mfield label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+    .mfield-row { display: flex; gap: 10px; }
+    .mfield-row .mfield { flex: 1; min-width: 0; }
 
     /* ── Chips ── */
     .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -826,6 +836,7 @@ function normalizeTrip(t) {
     t.treasurerId = t.members[0] ? t.members[0].id : null;
   if (!t.code) t.code = genCode();
   if (typeof t.cloud !== 'boolean') t.cloud = false;
+  if (typeof t.theme !== 'string') t.theme = '';
   return t;
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
@@ -1261,7 +1272,7 @@ function renderTrip() {
     </div>`;
   $('backBtn').addEventListener('click', () => uiBack());
 
-  const tabs = [['schedule','📅 일정'], ['expense','💰 경비'], ['settle','🧮 정산'], ['settings','⚙️ 설정']];
+  const tabs = [['schedule','📅 일정'], ['expense','💰 경비'], ['settle','🧮 정산'], ['member','👤 멤버'], ['settings','⚙️ 설정']];
   mainEl.innerHTML = `<div class="tabs">${tabs.map(([k,l]) =>
     `<button class="tab ${currentTab===k?'on':''}" data-tab="${k}">${l}</button>`).join('')}</div><div id="tabBody"></div>`;
   mainEl.querySelectorAll('.tab').forEach(b =>
@@ -1271,6 +1282,7 @@ function renderTrip() {
   if (currentTab === 'schedule') renderScheduleTab(t, body);
   else if (currentTab === 'expense') renderExpenseTab(t, body);
   else if (currentTab === 'settle') renderSettleTab(t, body);
+  else if (currentTab === 'member') renderMemberTab(t, body);
   else renderSettingsTab(t, body);
 
   if (currentTab === 'schedule' || currentTab === 'expense') {
@@ -1604,6 +1616,65 @@ async function shareSettlement(t) {
   catch { prompt('아래 내용을 복사하세요', text); }
 }
 
+// ── 멤버 탭 ──
+function renderMemberTab(t, body) {
+  let html = `
+    <div class="mfield" style="margin-bottom:18px">
+      <label>🧳 이번 여행 주제 / 메모</label>
+      <textarea id="tripTheme" rows="2" maxlength="200" placeholder="예) 아빠 환갑 기념 삿포로 골프여행">${esc(t.theme || '')}</textarea>
+    </div>
+    <div class="divider" style="margin-top:6px"><span class="divider-label">👨‍👩‍👧‍👦 멤버 정보</span><div class="divider-line"></div></div>
+    <div style="font-size:11px;color:var(--muted2);line-height:1.6;margin:0 2px 12px">항공권·숙소 예약에 필요한 영문이름·여권번호 등을 적어두면 편해요. 입력하면 바로 저장·공유됩니다.</div>`;
+  html += t.members.map(m => `
+    <div class="mcard">
+      <div class="mcard-head">
+        <span class="mcard-name">${esc(m.name)}</span>
+        <button class="member-del" data-del-member="${m.id}">🗑</button>
+      </div>
+      <div class="mfield"><label>영문 이름 (여권 표기)</label>
+        <input data-mid="${m.id}" data-field="enName" value="${esc(m.enName || '')}" placeholder="예) HONG GILDONG" maxlength="40" autocapitalize="characters"/></div>
+      <div class="mfield-row">
+        <div class="mfield"><label>여권번호</label><input data-mid="${m.id}" data-field="passport" value="${esc(m.passport || '')}" placeholder="M12345678" maxlength="20"/></div>
+        <div class="mfield"><label>여권 만료일</label><input type="date" data-mid="${m.id}" data-field="passportExp" value="${esc(m.passportExp || '')}"/></div>
+      </div>
+      <div class="mfield-row">
+        <div class="mfield"><label>생년월일</label><input type="date" data-mid="${m.id}" data-field="birth" value="${esc(m.birth || '')}"/></div>
+        <div class="mfield"><label>연락처</label><input type="tel" data-mid="${m.id}" data-field="phone" value="${esc(m.phone || '')}" placeholder="010-0000-0000" maxlength="20"/></div>
+      </div>
+    </div>`).join('');
+  html += `<div class="member-input-row" style="margin-top:6px">
+      <input id="newMemberName" placeholder="새 멤버 이름" maxlength="10"/>
+      <button id="addMemberBtn">＋ 추가</button>
+    </div>`;
+  body.innerHTML = html;
+
+  $('tripTheme').addEventListener('change', e => { t.theme = e.target.value.trim(); save(); syncPush(t); });
+  body.querySelectorAll('input[data-mid]').forEach(inp =>
+    inp.addEventListener('change', () => {
+      const m = t.members.find(x => x.id === inp.dataset.mid);
+      if (m) { m[inp.dataset.field] = inp.value.trim(); save(); syncPush(t); }
+    }));
+  $('addMemberBtn').addEventListener('click', () => {
+    const name = $('newMemberName').value.trim();
+    if (!name) return;
+    if (t.members.some(m => m.name === name)) { toast('같은 이름이 이미 있어요'); return; }
+    t.members.push({ id: uid(), name });
+    save(); syncPush(t); render();
+  });
+  body.querySelectorAll('[data-del-member]').forEach(b =>
+    b.addEventListener('click', () => {
+      const id = b.dataset.delMember;
+      const used = t.expenses.some(e => e.payerId === id || e.splitIds.includes(id));
+      if (used) { toast('경비 기록에 있는 멤버는 삭제할 수 없어요'); return; }
+      if (t.members.length <= 1) { toast('멤버는 1명 이상 있어야 해요'); return; }
+      if (!confirm(`${memberName(t, id)}님을 뺄까요?`)) return;
+      t.members = t.members.filter(m => m.id !== id);
+      delete t.dues[id];
+      if (t.treasurerId === id) t.treasurerId = t.members[0] ? t.members[0].id : null;
+      save(); syncPush(t); render();
+    }));
+}
+
 // ── 설정 탭 ──
 function renderSettingsTab(t, body) {
   let html = '';
@@ -1630,16 +1701,6 @@ function renderSettingsTab(t, body) {
   html += `<button class="set-btn" id="exportBtn"><span>📁 여행 데이터 내보내기</span><span class="arr">›</span></button>
     <button class="set-btn" id="importBtn"><span>📥 여행 데이터 가져오기</span><span class="arr">›</span></button>`;
 
-  // 멤버
-  html += `<div class="divider"><span class="divider-label">👨‍👩‍👧‍👦 멤버</span><div class="divider-line"></div></div>`;
-  html += `<div id="memberList">${t.members.map(m => `
-      <div class="member-row"><span>${esc(m.name)}</span>
-        <button class="member-del" data-del-member="${m.id}">🗑</button></div>`).join('')}</div>
-    <div class="member-input-row" style="margin-bottom:8px">
-      <input id="newMemberName" placeholder="새 멤버 이름" maxlength="10"/>
-      <button id="addMemberBtn">추가</button>
-    </div>`;
-
   // 여행 관리
   html += `<div class="divider"><span class="divider-label">⚙️ 여행 관리</span><div class="divider-line"></div></div>`;
   html += `<button class="set-btn" id="editTripBtn"><span>✏️ 여행 정보 수정</span><span class="arr">›</span></button>
@@ -1657,25 +1718,6 @@ function renderSettingsTab(t, body) {
   const ecb = $('enableCloudBtn');
   if (ecb) ecb.addEventListener('click', () => enableCloud(t));
 
-  $('addMemberBtn').addEventListener('click', () => {
-    const name = $('newMemberName').value.trim();
-    if (!name) return;
-    if (t.members.some(m => m.name === name)) { toast('같은 이름이 이미 있어요'); return; }
-    t.members.push({ id: uid(), name });
-    save(); syncPush(t); render();
-  });
-  body.querySelectorAll('[data-del-member]').forEach(b =>
-    b.addEventListener('click', () => {
-      const id = b.dataset.delMember;
-      const used = t.expenses.some(e => e.payerId === id || e.splitIds.includes(id));
-      if (used) { toast('경비 기록에 있는 멤버는 삭제할 수 없어요'); return; }
-      if (t.members.length <= 1) { toast('멤버는 1명 이상 있어야 해요'); return; }
-      if (!confirm(`${memberName(t, id)}님을 뺄까요?`)) return;
-      t.members = t.members.filter(m => m.id !== id);
-      delete t.dues[id];
-      if (t.treasurerId === id) t.treasurerId = t.members[0] ? t.members[0].id : null;
-      save(); syncPush(t); render();
-    }));
   $('exportBtn').addEventListener('click', () => exportTrip(t));
   $('importBtn').addEventListener('click', () => $('importFile').click());
   $('editTripBtn').addEventListener('click', () => openTripSheet(t.id));
