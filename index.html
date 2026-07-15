@@ -328,6 +328,29 @@
     .gctl-set { gap: 8px; width: 100%; align-items: center; justify-content: center; }
     .gctl-wide { flex: 1; max-width: 170px; }
 
+    /* ── 마작 ── */
+    #mahjongWrap { display: none; position: absolute; inset: 0; z-index: 5; flex-direction: column; background: #0a0d12; }
+    #mahjongBoard { flex: 1; position: relative; overflow: hidden; }
+    .mj-controls {
+      display: flex; gap: 10px; align-items: center; justify-content: center;
+      padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 10px);
+    }
+    .mj-btn {
+      flex: 1; max-width: 160px; height: 48px; border-radius: 12px;
+      background: var(--bg3); border: 1px solid var(--border2);
+      color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer; font-family: var(--sans);
+    }
+    .mj-btn:active { background: var(--bg2); }
+    .mj-tile {
+      position: absolute; border-radius: 6px; box-sizing: border-box;
+      background: linear-gradient(#fdfdf7, #e9e7db); border: 1px solid #b8b4a4;
+      box-shadow: 1.5px 1.5px 0 #a8a494;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      user-select: none;
+    }
+    .mj-tile.dim { filter: brightness(0.6); cursor: default; }
+    .mj-tile.sel { outline: 3px solid var(--accent); box-shadow: 0 0 10px var(--accent); }
+
     /* ── Expenses ── */
     .summary-card {
       background: linear-gradient(135deg, var(--bg3), var(--bg2));
@@ -710,11 +733,19 @@
         <button class="gctl" data-ctl="drop">⏬</button>
       </div>
     </div>
+    <div id="mahjongWrap">
+      <div id="mahjongBoard"></div>
+      <div class="mj-controls">
+        <button class="mj-btn" id="mjShuffle">🔀 섞기</button>
+        <button class="mj-btn" id="mjHint">💡 힌트</button>
+      </div>
+    </div>
     <div class="game-overlay" id="gameMsg">
       <div class="game-msg-title" id="gameMsgTitle">게임</div>
       <div class="gm-tabs">
-        <button class="gm-tab on" data-gmode="breakout">🧱 벽돌깨기</button>
+        <button class="gm-tab on" data-gmode="breakout">🧱 벽돌</button>
         <button class="gm-tab" data-gmode="tetris">🟦 테트리스</button>
+        <button class="gm-tab" data-gmode="mahjong">🀄 마작</button>
       </div>
       <div id="gmOptions"></div>
       <div class="game-msg-sub" id="gameMsgSub"></div>
@@ -2228,7 +2259,8 @@ function showGameMenu(title) {
   stopGameLoop();
   fitGameCanvas();
   setControls(null);
-  $('gameMsgTitle').textContent = title || (gameMode === 'breakout' ? '🧱 벽돌깨기' : '🟦 테트리스');
+  $('mahjongWrap').style.display = 'none';
+  $('gameMsgTitle').textContent = title || (gameMode === 'breakout' ? '🧱 벽돌깨기' : gameMode === 'tetris' ? '🟦 테트리스' : '🀄 마작');
   document.querySelectorAll('.gm-tab').forEach(t => t.classList.toggle('on', t.dataset.gmode === gameMode));
   renderGameOptions();
   $('gameMsg').style.display = 'flex';
@@ -2243,16 +2275,19 @@ function renderGameOptions() {
     o.querySelectorAll('[data-sp]').forEach(c => c.addEventListener('click', () => { boSpeedIdx = +c.dataset.sp; renderGameOptions(); }));
     o.querySelectorAll('[data-st]').forEach(c => c.addEventListener('click', () => { boStageSel = +c.dataset.st; renderGameOptions(); }));
     $('gameMsgSub').textContent = `막대를 움직여 공을 튕겨 벽돌을 모두 깨세요 · 총 ${BO_STAGES.length} 스테이지`;
-  } else {
+  } else if (gameMode === 'tetris') {
     o.innerHTML = `<div><div class="gm-opt-label">시작 레벨 (속도)</div><div class="chip-row">${[1,2,3,4,5].map(l => `<span class="chip ${tetLevelSel===l?'on':''}" data-lv="${l}">Lv ${l}</span>`).join('')}</div></div>`;
     o.querySelectorAll('[data-lv]').forEach(c => c.addEventListener('click', () => { tetLevelSel = +c.dataset.lv; renderGameOptions(); }));
     $('gameMsgSub').textContent = '아래 버튼으로 이동/회전 · 줄을 채워 지우세요';
+  } else {
+    o.innerHTML = '';
+    $('gameMsgSub').textContent = '같은 그림 두 개를 골라 없애세요. 위·좌우가 막히지 않은(밝은) 타일만 선택돼요.';
   }
 }
 function endGame(win) {
   stopGameLoop();
   if (win) SFX.stage(); else SFX.over();
-  const key = gameMode === 'breakout' ? 'ftp-bo-best' : 'ftp-tet-best';
+  const key = gameMode === 'breakout' ? 'ftp-bo-best' : gameMode === 'tetris' ? 'ftp-tet-best' : 'ftp-mj-best';
   const best = Math.max(gScore, Number(localStorage.getItem(key) || 0));
   localStorage.setItem(key, String(best));
   showGameMenu(win ? '🎉 클리어!' : '게임 오버');
@@ -2260,7 +2295,7 @@ function endGame(win) {
   $('gameStart').textContent = '다시 하기';
 }
 document.querySelectorAll('.gm-tab').forEach(t => t.addEventListener('click', () => { gameMode = t.dataset.gmode; showGameMenu(); }));
-$('gameStart').addEventListener('click', () => { unlockAudio(); if (gameMode === 'breakout') startBreakout(); else startTetris(); });
+$('gameStart').addEventListener('click', () => { unlockAudio(); if (gameMode === 'breakout') startBreakout(); else if (gameMode === 'tetris') startTetris(); else startMahjong(); });
 $('gameClose').addEventListener('click', () => uiBack());
 
 // ── 벽돌깨기 ──
@@ -2489,6 +2524,95 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowDown') { tetSoftDrop(); e.preventDefault(); }
   else if (e.key === ' ') { tetHardDrop(); e.preventDefault(); }
 });
+
+// ═══════════════ 마작 솔리테어 ═══════════════
+const MJ_LAYERS = [ { cols:6, rows:6, x0:0, y0:0 }, { cols:4, rows:4, x0:1, y0:1 }, { cols:2, rows:2, x0:2, y0:2 } ];
+const MJ_FACES = ['🍎','🍊','🍋','🍇','🍓','🍑','🍒','🥝','🍅','🌽','🍔','🍕','🍩','🥑'];
+let mjSlots = [], mjSel = null;
+function mjActive() { return mjSlots.filter(s => !s.removed); }
+function startMahjong() {
+  hideGameMsg(); gameMode = 'mahjong';
+  setControls(null);
+  $('mahjongWrap').style.display = 'flex';
+  mjSlots = []; let idc = 0;
+  for (let z = 0; z < MJ_LAYERS.length; z++) {
+    const L = MJ_LAYERS[z];
+    for (let c = 0; c < L.cols; c++) for (let r = 0; r < L.rows; r++)
+      mjSlots.push({ c: L.x0 + c, r: L.y0 + r, z, id: idc++, removed: false, face: null });
+  }
+  const deck = [], facesNeeded = mjSlots.length / 4;
+  for (let i = 0; i < facesNeeded; i++) { const f = MJ_FACES[i % MJ_FACES.length]; deck.push(f, f, f, f); }
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  mjSlots.forEach((s, i) => s.face = deck[i]);
+  mjSel = null; gScore = 0; gRunning = true;
+  renderMahjong();
+}
+function mjCovered(s) { return mjSlots.some(o => !o.removed && o.z === s.z + 1 && o.c === s.c && o.r === s.r); }
+function mjSideOpen(s) {
+  const left = mjSlots.some(o => !o.removed && o.z === s.z && o.r === s.r && o.c === s.c - 1);
+  const right = mjSlots.some(o => !o.removed && o.z === s.z && o.r === s.r && o.c === s.c + 1);
+  return !left || !right;
+}
+function mjFree(s) { return !s.removed && !mjCovered(s) && mjSideOpen(s); }
+function renderMahjong() {
+  const board = $('mahjongBoard');
+  const bw = board.clientWidth, bh = board.clientHeight;
+  const GC = 6, GR = 6;
+  let cellW = Math.min((bw - 10) / GC, (bh - 10) / (GR * 1.32));
+  cellW = Math.max(20, Math.floor(cellW)); const cellH = Math.floor(cellW * 1.32);
+  const off = Math.round(cellW * 0.16);
+  const totalW = GC * cellW + off * 2, totalH = GR * cellH + off * 2;
+  const ox = Math.floor((bw - totalW) / 2) + off * 2, oy = Math.floor((bh - totalH) / 2) + off * 2;
+  const fs = Math.floor(cellW * 0.5);
+  let html = '';
+  for (const s of mjSlots) {
+    if (s.removed) continue;
+    const x = ox + s.c * cellW - s.z * off, y = oy + s.r * cellH - s.z * off;
+    const zi = s.z * 100 + s.r * 6 + s.c;
+    const cls = 'mj-tile' + (mjFree(s) ? '' : ' dim') + (mjSel && mjSel.id === s.id ? ' sel' : '');
+    html += `<div class="${cls}" data-mj="${s.id}" style="left:${x}px;top:${y}px;width:${cellW - 2}px;height:${cellH - 2}px;font-size:${fs}px;z-index:${zi}">${s.face}</div>`;
+  }
+  board.innerHTML = html;
+  board.querySelectorAll('[data-mj]').forEach(el => el.addEventListener('click', () => mjClick(+el.dataset.mj)));
+  updateMjHud();
+}
+function updateMjHud() {
+  $('gameTitle').textContent = '🀄 마작';
+  $('gameScore').textContent = `남은 ${mjActive().length}개`;
+  $('gameLives').textContent = '';
+}
+function mjClick(id) {
+  const s = mjSlots.find(x => x.id === id);
+  if (!s || s.removed || !mjFree(s)) return;
+  if (mjSel && mjSel.id === s.id) { mjSel = null; renderMahjong(); return; }
+  if (mjSel && mjSel.face === s.face) {
+    s.removed = true; mjSel.removed = true; mjSel = null; gScore += 10;
+    SFX.brick(); renderMahjong();
+    if (mjActive().length === 0) endGame(true);
+    return;
+  }
+  mjSel = s; SFX.move(); renderMahjong();
+}
+function mjShuffle() {
+  const act = mjActive(), faces = act.map(s => s.face);
+  for (let i = faces.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [faces[i], faces[j]] = [faces[j], faces[i]]; }
+  act.forEach((s, i) => s.face = faces[i]); mjSel = null; renderMahjong(); toast('타일을 섞었어요');
+}
+function mjHint() {
+  const free = mjActive().filter(mjFree);
+  for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) {
+    if (free[i].face === free[j].face) {
+      renderMahjong();
+      const els = [free[i].id, free[j].id].map(id => $('mahjongBoard').querySelector(`[data-mj="${id}"]`));
+      els.forEach(e => { if (e) e.classList.add('sel'); });
+      setTimeout(() => els.forEach(e => { if (e) e.classList.remove('sel'); }), 900);
+      return;
+    }
+  }
+  toast('맞출 수 있는 짝이 없어요. 섞기를 눌러보세요');
+}
+$('mjShuffle').addEventListener('click', mjShuffle);
+$('mjHint').addEventListener('click', mjHint);
 
 // ═══════════════ PWA ═══════════════
 window.addEventListener('beforeinstallprompt', e => {
