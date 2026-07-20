@@ -240,6 +240,15 @@
     .tl-title { font-size: 14px; font-weight: 500; }
     .tl-memo { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     .memo-link { color: var(--accent); text-decoration: underline; }
+    .memo-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .memo-link-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 7px 11px; border-radius: 9px;
+      background: #0c1a24; border: 1px solid #16344a;
+      color: var(--accent); font-size: 12px; font-weight: 700; text-decoration: none;
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .memo-link-btn:active { background: #0e2230; }
     .tl-mapbtn {
       display: flex; align-items: center; justify-content: center;
       margin-top: 9px; width: 34px; height: 34px; border-radius: 9px;
@@ -644,6 +653,7 @@
   <div class="field">
     <label>메모 (선택)</label>
     <textarea id="sMemo" rows="2" placeholder="예약번호, 주소, 참고사항 등" maxlength="200"></textarea>
+    <div id="sMemoLinks" class="memo-links"></div>
   </div>
   <div class="sheet-actions">
     <button class="btn-danger" id="sDelete" style="display:none">삭제</button>
@@ -921,11 +931,18 @@ function mapUrl(place, ctx) {
   const q = place + (ctx ? ', ' + ctx : '');   // 여행지를 함께 붙여 검색 정확도↑ (동명이지 오인 방지)
   return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
 }
+const URL_RE = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|co|kr|io|me|jp|us|uk|edu|gov|info|biz|shop|store|app|dev|xyz|page|link|site|blog|tv|cc|ai)(?:\/[^\s<]*)?)/gi;
+function findUrls(text) {
+  const out = []; let m; URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(text || ''))) {
+    let u = m[0].replace(/[.,!?)\]}'"]+$/, '');
+    out.push({ display: u.replace(/^https?:\/\//i, ''), href: /^https?:\/\//i.test(u) ? u : 'https://' + u });
+  }
+  return out;
+}
 function linkify(text) {
   // 메모 텍스트를 안전하게 이스케이프한 뒤, URL을 클릭 가능한 링크로 변환.
-  // http/https/www 뿐 아니라 'example.com', 'site.co.kr/path' 같은 맨 주소도 인식.
-  const re = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|co|kr|io|me|jp|us|uk|edu|gov|info|biz|shop|store|app|dev|xyz|page|link|site|blog|tv|cc|ai)(?:\/[^\s<]*)?)/gi;
-  return esc(text).replace(re, m => {
+  return esc(text).replace(URL_RE, m => {
     let url = m, tail = '';
     const t = url.match(/[.,!?)\]}'"]+$/);
     if (t) { tail = url.slice(url.length - t[0].length); url = url.slice(0, url.length - t[0].length); }
@@ -1992,10 +2009,17 @@ function openSchSheet(schId) {
   setTimeSelects(s ? s.time : '');
   $('sTitle').value = s ? s.title : '';
   $('sMemo').value = s ? (s.memo || '') : '';
+  updateMemoLinks();
   schCat = s ? s.cat : 'tour';
   renderSchCatChips();
   openSheet('sheetSch');
 }
+function updateMemoLinks() {
+  const urls = findUrls($('sMemo').value);
+  $('sMemoLinks').innerHTML = urls.map(u =>
+    `<a class="memo-link-btn" href="${esc(u.href)}" target="_blank" rel="noopener">🔗 ${esc(u.display.slice(0, 34))}${u.display.length > 34 ? '…' : ''}</a>`).join('');
+}
+$('sMemo').addEventListener('input', updateMemoLinks);
 function renderSchCatChips() {
   $('sCatChips').innerHTML = SCH_CATS.map(([k,l]) =>
     `<span class="chip ${schCat===k?'on':''}" data-scat="${k}">${l}</span>`).join('');
