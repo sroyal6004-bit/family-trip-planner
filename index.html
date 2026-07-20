@@ -922,8 +922,10 @@ function mapUrl(place, ctx) {
   return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
 }
 function linkify(text) {
-  // 메모 텍스트를 안전하게 이스케이프한 뒤, URL(http/https/www)을 클릭 가능한 링크로 변환
-  return esc(text).replace(/((?:https?:\/\/|www\.)[^\s<]+)/gi, m => {
+  // 메모 텍스트를 안전하게 이스케이프한 뒤, URL을 클릭 가능한 링크로 변환.
+  // http/https/www 뿐 아니라 'example.com', 'site.co.kr/path' 같은 맨 주소도 인식.
+  const re = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|co|kr|io|me|jp|us|uk|edu|gov|info|biz|shop|store|app|dev|xyz|page|link|site|blog|tv|cc|ai)(?:\/[^\s<]*)?)/gi;
+  return esc(text).replace(re, m => {
     let url = m, tail = '';
     const t = url.match(/[.,!?)\]}'"]+$/);
     if (t) { tail = url.slice(url.length - t[0].length); url = url.slice(0, url.length - t[0].length); }
