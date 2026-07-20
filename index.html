@@ -1425,6 +1425,8 @@ function renderScheduleTab(t, body) {
   }
   if (!any && dayFilter === 'all')
     html += `<div class="empty"><div class="big">📅</div>+ 버튼으로 첫 일정을 추가해 보세요</div>`;
+  if (t.schedule.length)
+    html += `<button class="share-btn" id="shareSchedule" style="margin-top:10px">📤 일정 카톡 공유하기</button>`;
   body.innerHTML = html;
 
   body.querySelectorAll('[data-day]').forEach(c =>
@@ -1445,6 +1447,8 @@ function renderScheduleTab(t, body) {
     im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
   body.querySelectorAll('[data-route-day]').forEach(b =>
     b.addEventListener('click', () => openRouteSheet(b.dataset.routeDay)));
+  const ssb = $('shareSchedule');
+  if (ssb) ssb.addEventListener('click', () => shareSchedule(t));
 }
 
 // ── 동선(경로) 선택 ──
@@ -1481,6 +1485,35 @@ $('routeGo').addEventListener('click', () => {
   window.open(url, '_blank');
   closeSheets();
 });
+
+// ── 일정 공유 ──
+function scheduleText(t) {
+  const days = tripDays(t);
+  const L = [];
+  L.push(`🧳 ${t.name} 일정`);
+  if (t.place) L.push(`📍 ${t.place}`);
+  L.push(`기간: ${fmtRange(t)}`);
+  if (t.members.length) L.push(`멤버: ${t.members.map(m => m.name).join(', ')}`);
+  if (t.theme) L.push(`주제: ${t.theme}`);
+  L.push('');
+  days.forEach((d, i) => {
+    const items = t.schedule.filter(s => s.date === d).sort((a, b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
+    if (!items.length) return;
+    L.push(`📅 DAY ${i + 1} · ${fmtDate(d)}`);
+    for (const s of items) {
+      L.push(`· ${fmtTime(s.time)}  ${s.title}`);
+      if (s.memo) L.push(`   ${s.memo}`);
+    }
+    L.push('');
+  });
+  return L.join('\n').trim();
+}
+async function shareSchedule(t) {
+  const text = scheduleText(t);
+  if (navigator.share) { try { await navigator.share({ title: `${t.name} 일정`, text }); return; } catch {} }
+  try { await navigator.clipboard.writeText(text); toast('일정을 복사했어요! 카톡에 붙여넣으세요'); }
+  catch { prompt('아래 내용을 복사하세요', text); }
+}
 
 // ── 경비 탭 ──
 function renderExpenseTab(t, body) {
@@ -2666,14 +2699,8 @@ $('installBtn').addEventListener('click', async () => {
 $('closeBanner').addEventListener('click', () => $('install-banner').classList.remove('show'));
 window.addEventListener('appinstalled', () => { $('install-banner').classList.remove('show'); deferredPrompt = null; });
 if ('serviceWorker' in navigator) {
-  // 새 서비스워커가 제어권을 잡으면 자동 새로고침 → 항상 최신 버전 사용
-  let _swRefreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (_swRefreshing) return; _swRefreshing = true; location.reload();
-  });
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
-  });
+  // 네트워크 우선(no-store) 서비스워커가 매번 최신을 받아오므로 자동 새로고침은 불필요
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
 
 // ═══════════════ 시작 ═══════════════
