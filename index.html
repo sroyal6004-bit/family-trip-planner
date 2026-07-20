@@ -238,7 +238,8 @@
     }
     .tl-body { flex: 1; min-width: 0; }
     .tl-title { font-size: 14px; font-weight: 500; }
-    .tl-memo { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: pre-wrap; }
+    .tl-memo { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .memo-link { color: var(--accent); text-decoration: underline; }
     .tl-mapbtn {
       display: flex; align-items: center; justify-content: center;
       margin-top: 9px; width: 34px; height: 34px; border-radius: 9px;
@@ -920,6 +921,16 @@ function mapUrl(place, ctx) {
   const q = place + (ctx ? ', ' + ctx : '');   // 여행지를 함께 붙여 검색 정확도↑ (동명이지 오인 방지)
   return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
 }
+function linkify(text) {
+  // 메모 텍스트를 안전하게 이스케이프한 뒤, URL(http/https/www)을 클릭 가능한 링크로 변환
+  return esc(text).replace(/((?:https?:\/\/|www\.)[^\s<]+)/gi, m => {
+    let url = m, tail = '';
+    const t = url.match(/[.,!?)\]}'"]+$/);
+    if (t) { tail = url.slice(url.length - t[0].length); url = url.slice(0, url.length - t[0].length); }
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return `<a class="memo-link" href="${href}" target="_blank" rel="noopener">${url}</a>${tail}`;
+  });
+}
 function fmtTime(hhmm) {
   if (!hhmm) return '종일';
   const [h, m] = hhmm.split(':').map(Number);
@@ -1383,7 +1394,7 @@ function renderScheduleTab(t, body) {
           </div>
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
-            ${s.memo ? `<div class="tl-memo">${esc(s.memo)}</div>` : ''}
+            ${s.memo ? `<div class="tl-memo">${linkify(s.memo)}</div>` : ''}
             ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
           </div>
           <div class="tl-right">
@@ -1401,7 +1412,7 @@ function renderScheduleTab(t, body) {
     c.addEventListener('click', () => { dayFilter = c.dataset.day; render(); }));
   body.querySelectorAll('[data-sch]').forEach(el =>
     el.addEventListener('click', e => {
-      if (e.target.closest('.tl-mapbtn') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto')) return;
+      if (e.target.closest('.tl-mapbtn') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto') || e.target.closest('a')) return;
       openSchSheet(el.dataset.sch);
     }));
   body.querySelectorAll('[data-addphoto]').forEach(b =>
