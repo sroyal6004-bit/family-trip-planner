@@ -204,6 +204,8 @@
     }
     .day-route + .day-route { margin-left: 0; }
     .day-route:active { background: #0e2230; }
+    .day-route.route-map-btn { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
+    .day-route.route-map-btn:active { background: #0c1710; }
     .reco-btn { background: #241a0c; border-color: #4a3a16; color: #e8bf4c; }
     .reco-btn:active { background: #2e2210; }
     .reco-count {
@@ -254,7 +256,7 @@
     .tl-item:active { background: var(--bg3); }
     .tl-timecol { display: flex; flex-direction: column; min-width: 58px; }
     .tl-time {
-      font-family: var(--mono); font-size: 12px; color: var(--accent);
+      font-family: var(--mono); font-size: 12px; color: #93a4b4;
       padding-top: 2px; white-space: nowrap;
     }
     .tl-body { flex: 1; min-width: 0; }
@@ -274,11 +276,11 @@
       flex: 0 0 auto; align-self: center;
       display: inline-flex; align-items: center; gap: 4px;
       padding: 8px 11px; border-radius: 10px;
-      background: #0c1a24; border: 1px solid #16344a;
-      color: var(--accent); font-size: 11px; font-weight: 700;
+      background: var(--bg3); border: 1px solid var(--border2);
+      color: var(--text2); font-size: 11px; font-weight: 700;
       text-decoration: none; white-space: nowrap;
     }
-    .tl-mapbtn:active { background: #0e2230; }
+    .tl-mapbtn:active { background: var(--bg2); }
     .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
     .tl-thumb {
       width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
@@ -1477,7 +1479,7 @@ function renderScheduleTab(t, body) {
     const showRoute = items.length >= 2;
     const recoN = t.recos.filter(r => r.date === d).length;
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button><button class="day-route" data-mapday="${d}">🗺️ 동선 지도</button>` : ''}<button class="day-route reco-btn" data-recoday="${d}">💡 추천 일정${recoN ? ` <span class="reco-count">${recoN}</span>` : ''}</button></div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button><button class="day-route route-map-btn" data-mapday="${d}">🗺️ 동선 지도</button>` : ''}<button class="day-route reco-btn" data-recoday="${d}">💡 추천 일정${recoN ? ` <span class="reco-count">${recoN}</span>` : ''}</button></div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
