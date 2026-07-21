@@ -270,27 +270,31 @@
       max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .memo-link-btn:active { background: #0e2230; }
-    .tl-mapbtn {
-      display: flex; align-items: center; justify-content: center;
-      margin-top: 9px; width: 34px; height: 34px; border-radius: 9px;
-      background: #0c1a24; border: 1px solid #16344a;
-      color: var(--accent); font-size: 15px; text-decoration: none;
-    }
-    .tl-mapbtn:active { background: #0e2230; }
-    .tl-right { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 2px; }
-    .tl-cat { font-size: 16px; }
     .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
     .tl-thumb {
       width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
       background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; display: block;
     }
-    .tl-addphoto {
-      width: 34px; height: 34px; border-radius: 9px;
-      background: var(--bg3); border: 1px solid var(--border2);
-      color: var(--muted); font-size: 15px; cursor: pointer;
+    .sheet-mini-btn {
+      margin-top: 8px; display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 14px; border-radius: 10px;
+      background: #0c1a24; border: 1px solid #16344a;
+      color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .sheet-mini-btn:active { background: #0e2230; }
+    .sch-photos { display: flex; flex-wrap: wrap; gap: 10px; }
+    .sch-photos:empty { display: none; }
+    .sch-thumb-wrap { position: relative; }
+    .sch-thumb {
+      width: 66px; height: 66px; border-radius: 9px; object-fit: cover;
+      background: var(--bg3); border: 1px solid var(--border2); display: block;
+    }
+    .sch-thumb-del {
+      position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%;
+      background: #1a2432; border: 1px solid var(--border2); color: var(--text2);
+      font-size: 14px; line-height: 1; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
     }
-    .tl-addphoto:active { background: var(--bg2); }
 
     /* ── Lightbox (사진 크게 보기) ── */
     #lightbox {
@@ -667,13 +671,14 @@
     </div>
   </div>
   <div class="field">
-    <label>분류</label>
-    <div class="chip-row" id="sCatChips"></div>
-  </div>
-  <div class="field">
     <label>장소</label>
     <input id="sTitle" placeholder="예) 성산일출봉 · 서귀포 흑돼지집" maxlength="60"/>
-    <div style="font-size:11px;color:var(--muted2);margin-top:5px">장소 이름을 적으면 구글지도에서 바로 찾아볼 수 있어요 🗺️</div>
+    <button type="button" class="sheet-mini-btn" id="sMapBtn">🗺️ 구글 지도에서 보기</button>
+  </div>
+  <div class="field">
+    <label>사진 (선택)</label>
+    <div id="sPhotos" class="sch-photos"></div>
+    <button type="button" class="sheet-mini-btn" id="sAddPhoto">📷 사진 추가</button>
   </div>
   <div class="field">
     <label>메모 (선택)</label>
@@ -1331,6 +1336,11 @@ window.addEventListener('popstate', () => { // 하드웨어/브라우저 뒤로�
 
 // ═══════════════ 시트 열기/닫기 ═══════════════
 function _hideSheets() {
+  // 새 일정을 저장하지 않고 닫으면, 미리 첨부해 둔 사진은 정리(고아 사진 방지)
+  if ($('sheetSch').classList.contains('show') && schIsNew && !schSaved && schWorkId
+      && tripPhotos.some(p => p.schedId === schWorkId)) {
+    deletePhotosForSched(schWorkId);
+  }
   overlay.classList.remove('show');
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
 }
@@ -1463,16 +1473,11 @@ function renderScheduleTab(t, body) {
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
             <div class="tl-time">${fmtTime(s.time)}</div>
-            <a class="tl-mapbtn" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener" title="지도에서 보기">🗺️</a>
           </div>
           <div class="tl-body">
             <div class="tl-title">${esc(s.title)}</div>
             ${s.memo ? `<div class="tl-memo">${linkify(s.memo)}</div>` : ''}
             ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
-          </div>
-          <div class="tl-right">
-            <div class="tl-cat">${catEmoji(SCH_CATS, s.cat)}</div>
-            <button class="tl-addphoto" data-addphoto="${s.id}" title="사진 추가">📷</button>
           </div>
         </div>`).join('') : `<div class="empty" style="padding:20px">이 날은 아직 일정이 없어요</div>`}
     </div>`;
@@ -1488,15 +1493,8 @@ function renderScheduleTab(t, body) {
     c.addEventListener('click', () => { dayFilter = c.dataset.day; render(); }));
   body.querySelectorAll('[data-sch]').forEach(el =>
     el.addEventListener('click', e => {
-      if (e.target.closest('.tl-mapbtn') || e.target.closest('.tl-thumb') || e.target.closest('.tl-addphoto') || e.target.closest('a')) return;
+      if (e.target.closest('.tl-thumb') || e.target.closest('a')) return;
       openSchSheet(el.dataset.sch);
-    }));
-  body.querySelectorAll('[data-addphoto]').forEach(b =>
-    b.addEventListener('click', e => {
-      e.stopPropagation();
-      photoTargetSched = b.dataset.addphoto;
-      $('photoInput').value = '';
-      $('photoInput').click();
     }));
   body.querySelectorAll('[data-photo]').forEach(im =>
     im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
@@ -1751,7 +1749,7 @@ function buildRouteMapCanvas(t, onlyDate) {
       cx.fillStyle = '#fff'; font(cx, '800', 18); cx.textAlign = 'center';
       cx.fillText(String(nd.i + 1), nd.cx, nd.cy + 6.5);
       font(cx, '700', 12.5); cx.fillStyle = blk.color;
-      cx.fillText(`${catEmoji(SCH_CATS, nd.s.cat)} ${fmtTime(nd.s.time)}`, nd.cx, nd.cy + R + 16);
+      cx.fillText(fmtTime(nd.s.time), nd.cx, nd.cy + R + 16);
       font(cx, '700', 13.5); cx.fillStyle = '#2a2622';
       const lines = wrap(cx, nd.s.title, cellW - 12, 2);
       let ty = nd.cy + R + 33;
@@ -2284,7 +2282,7 @@ $('tSave').addEventListener('click', () => {
 });
 
 // ═══════════════ 일정 시트 ═══════════════
-let schCat = 'tour';
+let schWorkId = null, schIsNew = false, schSaved = false, schPrevCat = 'etc';
 function fillTimeSelects() {
   $('sAmpm').innerHTML = `<option value="">시간 없음(종일)</option><option value="AM">오전</option><option value="PM">오후</option>`;
   let hrs = ''; for (let i = 1; i <= 12; i++) hrs += `<option value="${i}">${i}시</option>`;
@@ -2311,7 +2309,11 @@ function readTimeSelects() {
 function openSchSheet(schId) {
   const t = cur();
   editSchId = schId;
+  schIsNew = !schId;
+  schWorkId = schId || uid();
+  schSaved = false;
   const s = schId ? t.schedule.find(x => x.id === schId) : null;
+  schPrevCat = s ? (s.cat || 'etc') : 'etc';
   $('sheetSchTitle').textContent = s ? '일정 수정' : '일정 추가';
   $('sDelete').style.display = s ? 'block' : 'none';
   const days = tripDays(t);
@@ -2322,30 +2324,39 @@ function openSchSheet(schId) {
   $('sTitle').value = s ? s.title : '';
   $('sMemo').value = s ? (s.memo || '') : '';
   updateMemoLinks();
-  schCat = s ? s.cat : 'tour';
-  renderSchCatChips();
+  renderSchPhotos();
   openSheet('sheetSch');
 }
+function renderSchPhotos() {
+  const list = photosFor(schWorkId);
+  $('sPhotos').innerHTML = list.map(p =>
+    `<div class="sch-thumb-wrap"><img class="sch-thumb" src="${p.data}" alt="사진"/><button type="button" class="sch-thumb-del" data-schphotodel="${p.id}" title="사진 삭제">×</button></div>`).join('');
+  $('sPhotos').querySelectorAll('[data-schphotodel]').forEach(b =>
+    b.addEventListener('click', async () => { await deletePhoto(b.dataset.schphotodel); renderSchPhotos(); }));
+}
+$('sAddPhoto').addEventListener('click', () => {
+  photoTargetSched = schWorkId; $('photoInput').value = ''; $('photoInput').click();
+});
+$('sMapBtn').addEventListener('click', () => {
+  const t = cur(); const title = $('sTitle').value.trim();
+  if (!title) { toast('장소를 먼저 입력해 주세요'); return; }
+  window.open(mapUrl(title, t && t.place), '_blank');
+});
 function updateMemoLinks() {
   const urls = findUrls($('sMemo').value);
   $('sMemoLinks').innerHTML = urls.map(u =>
     `<a class="memo-link-btn" href="${esc(u.href)}" target="_blank" rel="noopener">🔗 ${esc(u.display.slice(0, 34))}${u.display.length > 34 ? '…' : ''}</a>`).join('');
 }
 $('sMemo').addEventListener('input', updateMemoLinks);
-function renderSchCatChips() {
-  $('sCatChips').innerHTML = SCH_CATS.map(([k,l]) =>
-    `<span class="chip ${schCat===k?'on':''}" data-scat="${k}">${l}</span>`).join('');
-  $('sCatChips').querySelectorAll('[data-scat]').forEach(c =>
-    c.addEventListener('click', () => { schCat = c.dataset.scat; renderSchCatChips(); }));
-}
 $('sSave').addEventListener('click', () => {
   const t = cur();
   const title = $('sTitle').value.trim();
   if (!title) { toast('장소를 입력해 주세요'); return; }
-  const item = { id: editSchId || uid(), date: $('sDate').value, time: readTimeSelects(),
-    title, memo: $('sMemo').value.trim(), cat: schCat };
+  const item = { id: editSchId || schWorkId, date: $('sDate').value, time: readTimeSelects(),
+    title, memo: $('sMemo').value.trim(), cat: schPrevCat };
   if (editSchId) t.schedule = t.schedule.map(s => s.id === editSchId ? item : s);
   else t.schedule.push(item);
+  schSaved = true;
   save(); syncPush(t); closeSheets(); render();
 });
 $('sDelete').addEventListener('click', () => {
@@ -2507,10 +2518,13 @@ $('eDelete').addEventListener('click', () => {
 
 // ═══════════════ 사진 첨부 · 라이트박스 ═══════════════
 let photoTargetSched = null;
-$('photoInput').addEventListener('change', e => {
+$('photoInput').addEventListener('change', async e => {
   const files = Array.from(e.target.files);   // 복사 후에 value 초기화 (초기화하면 원본 FileList가 비워짐)
   e.target.value = '';
-  if (photoTargetSched && files.length) addPhotos(photoTargetSched, files);
+  if (photoTargetSched && files.length) {
+    await addPhotos(photoTargetSched, files);
+    if ($('sheetSch').classList.contains('show')) renderSchPhotos();
+  }
 });
 function openLightbox(id) {
   const p = tripPhotos.find(x => x.id === id);
