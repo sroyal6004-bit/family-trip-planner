@@ -192,7 +192,7 @@
 
     /* ── Timeline (schedule) ── */
     .day-block { margin-bottom: 22px; }
-    .day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .day-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
     .day-route {
       margin-left: auto;
       display: inline-flex; align-items: center; gap: 4px;
@@ -204,6 +204,26 @@
     }
     .day-route + .day-route { margin-left: 0; }
     .day-route:active { background: #0e2230; }
+    .reco-btn { background: #241a0c; border-color: #4a3a16; color: #e8bf4c; }
+    .reco-btn:active { background: #2e2210; }
+    .reco-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+      background: #e8bf4c; color: #241a0c; font-size: 10px; font-weight: 800;
+    }
+    .reco-item {
+      position: relative; padding: 12px 40px 12px 14px; margin-bottom: 8px;
+      background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px;
+    }
+    .reco-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .reco-name { font-size: 12px; font-weight: 700; color: #e8bf4c; }
+    .reco-time { font-size: 11px; color: var(--muted2); }
+    .reco-text { font-size: 14px; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+    .reco-del {
+      position: absolute; top: 8px; right: 8px; background: none; border: none;
+      color: var(--muted); font-size: 15px; cursor: pointer; padding: 4px 6px;
+    }
+    .reco-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 0; line-height: 1.7; }
 
     /* ── 동선 선택 시트 ── */
     .route-row {
@@ -783,6 +803,22 @@
   </div>
 </div>
 
+<!-- 추천 일정(메모장) 시트 -->
+<div class="sheet" id="sheetReco">
+  <div class="sheet-title"><span id="recoTitle">💡 추천 일정</span><button class="sheet-close" data-close>×</button></div>
+  <div style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:14px">
+    가고 싶은 곳, 맛집, 하고 싶은 것 등을 자유롭게 남겨보세요. 함께 여행하는 <b>모두에게 공유</b>돼요. 😊
+  </div>
+  <div id="recoList"></div>
+  <div class="field-row" style="margin-top:4px">
+    <div class="field" style="flex:0 0 34%"><label>이름 (선택)</label><input id="recoName" placeholder="예) 엄마" maxlength="20" autocomplete="off"/></div>
+    <div class="field" style="flex:1"><label>추천 내용</label><input id="recoText" placeholder="예) 르타오 치즈케이크 꼭 먹기!" maxlength="300" autocomplete="off"/></div>
+  </div>
+  <div class="sheet-actions" style="margin-top:6px">
+    <button class="btn-primary" id="recoAdd">💡 추천 남기기</button>
+  </div>
+</div>
+
 <!-- 설치 배너 -->
 <div id="install-banner">
   <div class="banner-text">
@@ -902,6 +938,7 @@ function normalizeTrip(t) {
   if (!t.code) t.code = genCode();
   if (typeof t.cloud !== 'boolean') t.cloud = false;
   if (typeof t.theme !== 'string') t.theme = '';
+  if (!Array.isArray(t.recos)) t.recos = [];
   return t;
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
@@ -1018,6 +1055,7 @@ function applyRemoteTrip(data) {
   } else db.trips.push(incoming);
   applyingRemote = true; save(); applyingRemote = false;
   render();
+  if ($('sheetReco').classList.contains('show') && recoDate) renderRecoList();
 }
 function startSync() {
   if (!cloudOn) return;
@@ -1418,8 +1456,9 @@ function renderScheduleTab(t, body) {
     any = true;
     const idx = days.indexOf(d) + 1;
     const showRoute = items.length >= 2;
+    const recoN = t.recos.filter(r => r.date === d).length;
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button><button class="day-route" data-mapday="${d}">🗺️ 동선 지도</button>` : ''}</div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button><button class="day-route" data-mapday="${d}">🗺️ 동선 지도</button>` : ''}<button class="day-route reco-btn" data-recoday="${d}">💡 추천 일정${recoN ? ` <span class="reco-count">${recoN}</span>` : ''}</button></div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
@@ -1465,6 +1504,8 @@ function renderScheduleTab(t, body) {
     b.addEventListener('click', () => openRouteSheet(b.dataset.routeDay)));
   body.querySelectorAll('[data-mapday]').forEach(b =>
     b.addEventListener('click', () => openMapView(t, b.dataset.mapday)));
+  body.querySelectorAll('[data-recoday]').forEach(b =>
+    b.addEventListener('click', () => openRecoSheet(b.dataset.recoday)));
   const ssb = $('shareSchedule');
   if (ssb) ssb.addEventListener('click', () => shareSchedule(t));
   const amb = $('aiMapPrompt');
@@ -1505,6 +1546,61 @@ $('routeGo').addEventListener('click', () => {
   window.open(url, '_blank');
   closeSheets();
 });
+
+// ── 추천 일정(자유 메모장) ──
+let recoDate = null;
+function recoTimeAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts, min = Math.floor(diff / 60000);
+  if (min < 1) return '방금';
+  if (min < 60) return `${min}분 전`;
+  const h = Math.floor(min / 60); if (h < 24) return `${h}시간 전`;
+  const dt = new Date(ts); return `${dt.getMonth() + 1}/${dt.getDate()}`;
+}
+function openRecoSheet(date) {
+  const t = cur(); if (!t) return;
+  recoDate = date;
+  const di = tripDays(t).indexOf(date) + 1;
+  $('recoTitle').textContent = `💡 추천 일정 · DAY ${di} (${fmtDate(date)})`;
+  $('recoName').value = localStorage.getItem('ftp-reco-name') || '';
+  $('recoText').value = '';
+  renderRecoList();
+  openSheet('sheetReco');
+  setTimeout(() => $('recoText').focus(), 250);
+}
+function renderRecoList() {
+  const t = cur(); if (!t) return;
+  const list = t.recos.filter(r => r.date === recoDate).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  $('recoList').innerHTML = list.length ? list.map(r => `
+    <div class="reco-item">
+      <div class="reco-head"><span class="reco-name">${esc(r.name || '익명')}</span><span class="reco-time">${recoTimeAgo(r.ts)}</span></div>
+      <div class="reco-text">${linkify(r.text)}</div>
+      <button class="reco-del" data-recodel="${r.id}" title="삭제">🗑</button>
+    </div>`).join('')
+    : `<div class="reco-empty">아직 추천이 없어요.<br/>첫 번째 추천을 남겨보세요! 🙌</div>`;
+  $('recoList').querySelectorAll('[data-recodel]').forEach(b =>
+    b.addEventListener('click', () => deleteReco(b.dataset.recodel)));
+}
+function addReco() {
+  const t = cur(); if (!t || !recoDate) return;
+  const name = $('recoName').value.trim();
+  const text = $('recoText').value.trim();
+  if (!text) { toast('추천 내용을 입력해 주세요'); return; }
+  if (name) localStorage.setItem('ftp-reco-name', name);
+  t.recos.push({ id: uid(), date: recoDate, name, text, ts: Date.now() });
+  save(); syncPush(t);
+  $('recoText').value = '';
+  renderRecoList(); render();
+  $('recoText').focus();
+}
+function deleteReco(id) {
+  const t = cur(); if (!t) return;
+  t.recos = t.recos.filter(r => r.id !== id);
+  save(); syncPush(t);
+  renderRecoList(); render();
+}
+$('recoAdd').addEventListener('click', addReco);
+$('recoText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addReco(); } });
 
 // ── 일정 공유 ──
 function scheduleText(t) {
