@@ -1427,7 +1427,9 @@ function renderScheduleTab(t, body) {
     html += `<div class="empty"><div class="big">📅</div>+ 버튼으로 첫 일정을 추가해 보세요</div>`;
   if (t.schedule.length)
     html += `<button class="share-btn" id="shareSchedule" style="margin-top:10px">📤 일정 카톡 공유하기</button>` +
-            `<button class="share-btn" id="imgSchedule" style="margin-top:8px">🖼️ 일정표 이미지 만들기</button>`;
+            `<button class="share-btn" id="imgSchedule" style="margin-top:8px">🖼️ 일정표 이미지 만들기</button>` +
+            `<button class="share-btn" id="routeMapImg" style="margin-top:8px">🗺️ 동선 지도 이미지 만들기</button>` +
+            `<button class="share-btn" id="aiMapPrompt" style="margin-top:8px">🤖 AI 지도 프롬프트 복사</button>`;
   body.innerHTML = html;
 
   body.querySelectorAll('[data-day]').forEach(c =>
@@ -1452,6 +1454,10 @@ function renderScheduleTab(t, body) {
   if (ssb) ssb.addEventListener('click', () => shareSchedule(t));
   const isb = $('imgSchedule');
   if (isb) isb.addEventListener('click', () => shareItinerary(t));
+  const rmb = $('routeMapImg');
+  if (rmb) rmb.addEventListener('click', () => shareRouteMap(t));
+  const amb = $('aiMapPrompt');
+  if (amb) amb.addEventListener('click', () => copyMapPrompt(t));
 }
 
 // ── 동선(경로) 선택 ──
@@ -1592,6 +1598,152 @@ async function shareItinerary(t) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 8000);
     toast('일정표 이미지를 저장했어요!');
+  }, 'image/png');
+}
+
+// ── ① AI 지도 프롬프트 (클로드에 붙여넣어 지도형 인포그래픽 생성) ──
+function mapPrompt(t) {
+  const L = [];
+  L.push('아래 여행 일정을 바탕으로, 손으로 그린 듯한 감성의 "여행 동선 지도" 인포그래픽 이미지를 하나 만들어줘.');
+  L.push('');
+  L.push('[디자인 요청]');
+  L.push('· 지역(도시·구역)을 큼직하게 구분하고, 실제 지리적 위치에 가깝게 장소를 배치');
+  L.push('· 날짜(DAY)별로 서로 다른 색의 동선(경로 선)으로 이어서 하루 흐름이 한눈에 보이게');
+  L.push('· 각 장소마다 번호·아이콘·이름과 도착 시간을 표시');
+  L.push('· 장소 사이 이동 구간에는 예상 이동 시간(도보/차량)을 함께 표기');
+  L.push('· 상단에 여행 제목과 기간, 한쪽 구석에 날짜별 색상 범례');
+  L.push('· 따뜻한 크림색 배경에 아기자기하고 깔끔한 손그림 스타일, 세로형 이미지');
+  L.push('');
+  L.push('[여행 정보]');
+  L.push(scheduleText(t));
+  return L.join('\n');
+}
+async function copyMapPrompt(t) {
+  if (!t.schedule.length) { toast('먼저 일정을 추가해 주세요'); return; }
+  const text = mapPrompt(t);
+  try { await navigator.clipboard.writeText(text); toast('프롬프트를 복사했어요! 클로드(claude.ai)에 붙여넣으세요'); }
+  catch { prompt('아래 내용을 복사해서 claude.ai에 붙여넣으세요', text); }
+}
+
+// ── ② 동선 지도 이미지(앱 내 생성, 오프라인) ──
+function minutesBetween(a, b) {
+  if (!a || !b) return null;
+  const pa = a.split(':').map(Number), pb = b.split(':').map(Number);
+  let d = (pb[0] * 60 + pb[1]) - (pa[0] * 60 + pa[1]);
+  if (d < 0) d += 24 * 60;
+  return d;
+}
+function fmtDur(min) {
+  if (min == null) return '';
+  if (min < 60) return `${min}분 후`;
+  const h = Math.floor(min / 60), r = min % 60;
+  return r ? `${h}시간 ${r}분 후` : `${h}시간 후`;
+}
+function buildRouteMapCanvas(t) {
+  const S = 2, W = 760, PAD = 40, COLS = 3, R = 22, ROWH = 122;
+  const font = (cx, w, sz) => { cx.font = `${w} ${sz}px "Noto Sans KR", sans-serif`; };
+  const wrap = (cx, text, maxW, maxLines) => {
+    const out = []; let cur = '';
+    for (const ch of (text || '')) {
+      if (cx.measureText(cur + ch).width > maxW && cur) { out.push(cur); cur = ch; } else cur += ch;
+      if (out.length >= maxLines) break;
+    }
+    if (out.length < maxLines && (cur || !out.length)) out.push(cur);
+    if (out.length >= maxLines && cur && out[maxLines - 1] !== cur) {
+      let last = out[maxLines - 1];
+      while (last && cx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+      out[maxLines - 1] = last + '…';
+    }
+    return out.slice(0, maxLines);
+  };
+  const innerW = W - 2 * PAD, cellW = innerW / COLS;
+  const days = tripDays(t);
+  let y = PAD + 78; const blocks = []; let di = 0;
+  for (let idx = 0; idx < days.length; idx++) {
+    const its = t.schedule.filter(s => s.date === days[idx]).sort((a, b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
+    if (!its.length) continue;
+    const color = ITIN_COLORS[di % ITIN_COLORS.length]; di++;
+    y += 16; const headerY = y; y += 34;
+    const startY = y;
+    const nodes = its.map((s, i) => {
+      const row = Math.floor(i / COLS), inRow = i % COLS;
+      const col = (row % 2 === 0) ? inRow : (COLS - 1 - inRow);
+      return { s, i, cx: PAD + col * cellW + cellW / 2, cy: startY + row * ROWH + R, row };
+    });
+    const rows = Math.ceil(its.length / COLS);
+    y = startY + rows * ROWH + 4;
+    blocks.push({ d: days[idx], idx, color, headerY, nodes });
+  }
+  y += 30; const H = y + PAD;
+  const cv = document.createElement('canvas'); cv.width = W * S; cv.height = Math.round(H * S);
+  const cx = cv.getContext('2d'); cx.scale(S, S);
+  cx.fillStyle = '#f4efe6'; cx.fillRect(0, 0, W, H);
+  cx.textBaseline = 'alphabetic';
+  font(cx, '900', 30); cx.fillStyle = '#2a2622'; cx.textAlign = 'left';
+  cx.fillText(t.name + ' 동선', PAD, PAD + 28);
+  font(cx, '400', 14); cx.fillStyle = '#8a8378';
+  cx.fillText([t.place, fmtRange(t)].filter(Boolean).join('   ·   '), PAD, PAD + 52);
+  cx.strokeStyle = '#2a2622'; cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(PAD, PAD + 66); cx.lineTo(W - PAD, PAD + 66); cx.stroke();
+  const arrow = (x1, y1, x2, y2, color) => {
+    cx.strokeStyle = color; cx.fillStyle = color; cx.lineWidth = 2.5;
+    cx.setLineDash([1, 0]);
+    const ang = Math.atan2(y2 - y1, x2 - x1), len = Math.hypot(x2 - x1, y2 - y1);
+    const sx = x1 + Math.cos(ang) * (R + 3), sy = y1 + Math.sin(ang) * (R + 3);
+    const ex = x2 - Math.cos(ang) * (R + 9), ey = y2 - Math.sin(ang) * (R + 9);
+    if (len <= R * 2 + 14) return { mx: (x1 + x2) / 2, my: (y1 + y2) / 2 };
+    cx.beginPath(); cx.moveTo(sx, sy); cx.lineTo(ex, ey); cx.stroke();
+    cx.beginPath(); cx.moveTo(ex, ey);
+    cx.lineTo(ex - Math.cos(ang - 0.4) * 9, ey - Math.sin(ang - 0.4) * 9);
+    cx.lineTo(ex - Math.cos(ang + 0.4) * 9, ey - Math.sin(ang + 0.4) * 9);
+    cx.closePath(); cx.fill();
+    return { mx: (sx + ex) / 2, my: (sy + ey) / 2 };
+  };
+  for (const blk of blocks) {
+    font(cx, '800', 19); cx.fillStyle = blk.color; cx.textAlign = 'left';
+    cx.fillText(`DAY ${blk.idx + 1}    ${fmtDate(blk.d)}`, PAD, blk.headerY + 22);
+    // 연결선 + 이동시간 라벨 (노드 뒤에 먼저 그림)
+    for (let i = 0; i < blk.nodes.length - 1; i++) {
+      const a = blk.nodes[i], b = blk.nodes[i + 1];
+      const mid = arrow(a.cx, a.cy, b.cx, b.cy, blk.color);
+      const dur = fmtDur(minutesBetween(a.s.time, b.s.time));
+      if (dur && a.row === b.row) {
+        font(cx, '700', 11); cx.textAlign = 'center';
+        const w = cx.measureText(dur).width + 12;
+        cx.fillStyle = '#f4efe6'; cx.fillRect(mid.mx - w / 2, mid.my - 8, w, 15);
+        cx.fillStyle = blk.color; cx.fillText(dur, mid.mx, mid.my + 3.5);
+      }
+    }
+    // 노드
+    for (const nd of blk.nodes) {
+      cx.fillStyle = blk.color; cx.beginPath(); cx.arc(nd.cx, nd.cy, R, 0, 7); cx.fill();
+      cx.fillStyle = '#fff'; font(cx, '800', 18); cx.textAlign = 'center';
+      cx.fillText(String(nd.i + 1), nd.cx, nd.cy + 6.5);
+      font(cx, '700', 12.5); cx.fillStyle = blk.color;
+      cx.fillText(`${catEmoji(SCH_CATS, nd.s.cat)} ${fmtTime(nd.s.time)}`, nd.cx, nd.cy + R + 16);
+      font(cx, '700', 13.5); cx.fillStyle = '#2a2622';
+      const lines = wrap(cx, nd.s.title, cellW - 12, 2);
+      let ty = nd.cy + R + 33;
+      for (const ln of lines) { cx.fillText(ln, nd.cx, ty); ty += 17; }
+    }
+  }
+  font(cx, '400', 12); cx.fillStyle = '#b0a89a'; cx.textAlign = 'left';
+  cx.fillText('🧳 우리 & 여행 · 동선 지도', PAD, H - PAD + 10);
+  return cv;
+}
+async function shareRouteMap(t) {
+  if (!t.schedule.length) { toast('먼저 일정을 추가해 주세요'); return; }
+  toast('동선 지도를 만드는 중...');
+  try { await document.fonts.ready; } catch (e) {}
+  const cv = buildRouteMapCanvas(t);
+  cv.toBlob(async blob => {
+    if (!blob) { toast('이미지 생성에 실패했어요'); return; }
+    const file = new File([blob], `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_동선지도.png`, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: `${t.name} 동선 지도` }); return; } catch (e) {}
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    toast('동선 지도 이미지를 저장했어요!');
   }, 'image/png');
 }
 
