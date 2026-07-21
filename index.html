@@ -285,6 +285,10 @@
     .lb-del { color: var(--red); font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
     .lb-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 8px calc(env(safe-area-inset-bottom, 0px) + 14px); }
     .lb-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+    #mapView { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.94); flex-direction: column; }
+    #mapView.show { display: flex; }
+    #mapView .lb-img-wrap { overflow: auto; align-items: flex-start; }
+    .lb-save { color: #fff; font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.14); border-radius: 20px; padding: 7px 14px; }
 
     /* ── 미니게임 ── */
     #game { display: none; position: fixed; inset: 0; z-index: 210; background: var(--bg); flex-direction: column; }
@@ -801,6 +805,14 @@
   <div class="lb-img-wrap"><img class="lb-img" id="lbImg" alt=""/></div>
 </div>
 
+<div id="mapView">
+  <div class="lb-bar">
+    <button class="lb-save" id="mapSave">📤 저장 · 공유</button>
+    <button class="lb-btn" id="mapClose">×</button>
+  </div>
+  <div class="lb-img-wrap"><img class="lb-img" id="mapImg" alt="동선 지도"/></div>
+</div>
+
 <!-- Firebase (실시간 공유) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -1250,6 +1262,7 @@ const headerEl = $('header'), mainEl = $('main'), fab = $('fab'), overlay = $('o
 let suppressPop = false;
 function topLayer() {
   if ($('game').classList.contains('show')) return 'game';
+  if ($('mapView').classList.contains('show')) return 'mapView';
   if ($('lightbox').classList.contains('show')) return 'lightbox';
   if (document.querySelector('.sheet.show')) return 'sheet';
   if (view === 'trip') return 'trip';
@@ -1257,6 +1270,7 @@ function topLayer() {
 }
 function closeLayer(layer) {
   if (layer === 'game') _hideGame();
+  else if (layer === 'mapView') _hideMapView();
   else if (layer === 'lightbox') _hideLightbox();
   else if (layer === 'sheet') _hideSheets();
   else if (layer === 'trip') { view = 'home'; render(); }
@@ -1427,8 +1441,7 @@ function renderScheduleTab(t, body) {
     html += `<div class="empty"><div class="big">📅</div>+ 버튼으로 첫 일정을 추가해 보세요</div>`;
   if (t.schedule.length)
     html += `<button class="share-btn" id="shareSchedule" style="margin-top:10px">📤 일정 카톡 공유하기</button>` +
-            `<button class="share-btn" id="imgSchedule" style="margin-top:8px">🖼️ 일정표 이미지 만들기</button>` +
-            `<button class="share-btn" id="routeMapImg" style="margin-top:8px">🗺️ 동선 지도 이미지 만들기</button>` +
+            `<button class="share-btn" id="routeMapImg" style="margin-top:8px">🗺️ 동선 지도 보기</button>` +
             `<button class="share-btn" id="aiMapPrompt" style="margin-top:8px">🤖 AI 지도 프롬프트 복사</button>`;
   body.innerHTML = html;
 
@@ -1452,10 +1465,8 @@ function renderScheduleTab(t, body) {
     b.addEventListener('click', () => openRouteSheet(b.dataset.routeDay)));
   const ssb = $('shareSchedule');
   if (ssb) ssb.addEventListener('click', () => shareSchedule(t));
-  const isb = $('imgSchedule');
-  if (isb) isb.addEventListener('click', () => shareItinerary(t));
   const rmb = $('routeMapImg');
-  if (rmb) rmb.addEventListener('click', () => shareRouteMap(t));
+  if (rmb) rmb.addEventListener('click', () => openMapView(t));
   const amb = $('aiMapPrompt');
   if (amb) amb.addEventListener('click', () => copyMapPrompt(t));
 }
@@ -1523,84 +1534,8 @@ async function shareSchedule(t) {
   try { await navigator.clipboard.writeText(text); toast('일정을 복사했어요! 카톡에 붙여넣으세요'); }
   catch { prompt('아래 내용을 복사하세요', text); }
 }
-// ── 일정표 이미지(세로 타임라인 포스터) ──
+// ── 동선 지도 색상(날짜별) ──
 const ITIN_COLORS = ['#b5342e', '#d98a1e', '#2f7d4f', '#2a6f9c', '#7a4fb0'];
-function buildItineraryCanvas(t) {
-  const S = 2, W = 760, PAD = 44;
-  const colX = PAD + 20, textX = colX + 22, textW = W - textX - PAD;
-  const font = (cx, w, sz) => { cx.font = `${w} ${sz}px "Noto Sans KR", sans-serif`; };
-  const wrap = (cx, text, maxW) => {
-    const out = []; let cur = '';
-    for (const ch of (text || '')) {
-      if (ch === '\n') { out.push(cur); cur = ''; continue; }
-      if (cx.measureText(cur + ch).width > maxW && cur) { out.push(cur); cur = ch; } else cur += ch;
-    }
-    if (cur || !out.length) out.push(cur);
-    return out;
-  };
-  const m = document.createElement('canvas').getContext('2d');
-  const days = tripDays(t);
-  let y = PAD + 74;
-  const blocks = []; let di = 0;
-  for (let idx = 0; idx < days.length; idx++) {
-    const its = t.schedule.filter(s => s.date === days[idx]).sort((a, b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
-    if (!its.length) continue;
-    const color = ITIN_COLORS[di % ITIN_COLORS.length]; di++;
-    y += 20; const headerY = y; y += 30;
-    const rows = [];
-    for (const s of its) {
-      font(m, '700', 16.5); const placeLines = wrap(m, s.title, textW);
-      font(m, '400', 13); const memoLines = s.memo ? wrap(m, s.memo, textW) : [];
-      const top = y; const h = 20 + placeLines.length * 22 + memoLines.length * 18 + 12;
-      rows.push({ s, placeLines, memoLines, top, h }); y += h;
-    }
-    y += 6; blocks.push({ d: days[idx], idx, color, headerY, rows });
-  }
-  y += 34; const H = y + PAD;
-  const cv = document.createElement('canvas'); cv.width = W * S; cv.height = Math.round(H * S);
-  const cx = cv.getContext('2d'); cx.scale(S, S);
-  cx.fillStyle = '#f4efe6'; cx.fillRect(0, 0, W, H);
-  cx.textBaseline = 'alphabetic';
-  font(cx, '900', 30); cx.fillStyle = '#2a2622'; cx.fillText(t.name, PAD, PAD + 28);
-  font(cx, '400', 14); cx.fillStyle = '#8a8378';
-  cx.fillText([t.theme, fmtRange(t), `${t.members.length}명`].filter(Boolean).join('   ·   '), PAD, PAD + 52);
-  cx.strokeStyle = '#2a2622'; cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(PAD, PAD + 66); cx.lineTo(W - PAD, PAD + 66); cx.stroke();
-  for (const blk of blocks) {
-    font(cx, '800', 19); cx.fillStyle = blk.color;
-    cx.fillText(`DAY ${blk.idx + 1}    ${fmtDate(blk.d)}`, PAD, blk.headerY + 22);
-    const first = blk.rows[0], last = blk.rows[blk.rows.length - 1];
-    cx.strokeStyle = blk.color; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(colX, first.top + 9); cx.lineTo(colX, last.top + 9); cx.stroke();
-    for (const row of blk.rows) {
-      let yy = row.top;
-      cx.fillStyle = blk.color; cx.beginPath(); cx.arc(colX, yy + 9, 6, 0, 7); cx.fill();
-      cx.fillStyle = '#f4efe6'; cx.beginPath(); cx.arc(colX, yy + 9, 2.6, 0, 7); cx.fill();
-      font(cx, '700', 13); cx.fillStyle = blk.color;
-      cx.fillText(`${catEmoji(SCH_CATS, row.s.cat)}  ${fmtTime(row.s.time)}`, textX, yy + 13); yy += 20;
-      font(cx, '700', 16.5); cx.fillStyle = '#2a2622';
-      for (const ln of row.placeLines) { cx.fillText(ln, textX, yy + 15); yy += 22; }
-      if (row.memoLines.length) { font(cx, '400', 13); cx.fillStyle = '#8a8378'; for (const ln of row.memoLines) { cx.fillText(ln, textX, yy + 13); yy += 18; } }
-    }
-  }
-  font(cx, '400', 12); cx.fillStyle = '#b0a89a'; cx.fillText('🧳 우리 & 여행', PAD, H - PAD + 10);
-  return cv;
-}
-async function shareItinerary(t) {
-  if (!t.schedule.length) { toast('먼저 일정을 추가해 주세요'); return; }
-  toast('일정표 이미지를 만드는 중...');
-  try { await document.fonts.ready; } catch (e) {}
-  const cv = buildItineraryCanvas(t);
-  cv.toBlob(async blob => {
-    if (!blob) { toast('이미지 생성에 실패했어요'); return; }
-    const file = new File([blob], `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_일정표.png`, { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: `${t.name} 일정표` }); return; } catch (e) {}
-    }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
-    toast('일정표 이미지를 저장했어요!');
-  }, 'image/png');
-}
-
 // ── ① AI 지도 프롬프트 (클로드에 붙여넣어 지도형 인포그래픽 생성) ──
 function mapPrompt(t) {
   const L = [];
@@ -1730,22 +1665,35 @@ function buildRouteMapCanvas(t) {
   cx.fillText('🧳 우리 & 여행 · 동선 지도', PAD, H - PAD + 10);
   return cv;
 }
-async function shareRouteMap(t) {
+let mapViewBlob = null, mapViewName = '';
+async function openMapView(t) {
   if (!t.schedule.length) { toast('먼저 일정을 추가해 주세요'); return; }
-  toast('동선 지도를 만드는 중...');
+  toast('동선 지도를 그리는 중...');
   try { await document.fonts.ready; } catch (e) {}
   const cv = buildRouteMapCanvas(t);
-  cv.toBlob(async blob => {
-    if (!blob) { toast('이미지 생성에 실패했어요'); return; }
-    const file = new File([blob], `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_동선지도.png`, { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: `${t.name} 동선 지도` }); return; } catch (e) {}
-    }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
-    toast('동선 지도 이미지를 저장했어요!');
+  mapViewName = `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_동선지도.png`;
+  cv.toBlob(blob => {
+    mapViewBlob = blob;
+    $('mapImg').src = cv.toDataURL('image/png');
+    $('mapView').classList.add('show');
+    pushLayer();
   }, 'image/png');
 }
+function _hideMapView() {
+  $('mapView').classList.remove('show'); $('mapImg').src = ''; mapViewBlob = null;
+}
+async function saveMapView() {
+  if (!mapViewBlob) return;
+  const file = new File([mapViewBlob], mapViewName, { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '동선 지도' }); return; } catch (e) {}
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(mapViewBlob); a.download = mapViewName; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  toast('동선 지도 이미지를 저장했어요!');
+}
+$('mapClose').addEventListener('click', uiBack);
+$('mapSave').addEventListener('click', saveMapView);
 
 // ── 경비 탭 ──
 function renderExpenseTab(t, body) {
