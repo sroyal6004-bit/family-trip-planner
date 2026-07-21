@@ -270,6 +270,15 @@
       max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .memo-link-btn:active { background: #0e2230; }
+    .tl-mapbtn {
+      flex: 0 0 auto; align-self: center;
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 8px 11px; border-radius: 10px;
+      background: #0c1a24; border: 1px solid #16344a;
+      color: var(--accent); font-size: 11px; font-weight: 700;
+      text-decoration: none; white-space: nowrap;
+    }
+    .tl-mapbtn:active { background: #0e2230; }
     .tl-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
     .tl-thumb {
       width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
@@ -673,7 +682,7 @@
   <div class="field">
     <label>장소</label>
     <input id="sTitle" placeholder="예) 성산일출봉 · 서귀포 흑돼지집" maxlength="60"/>
-    <button type="button" class="sheet-mini-btn" id="sMapBtn">🗺️ 구글 지도에서 보기</button>
+    <div style="font-size:11px;color:var(--muted2);margin-top:5px">저장 후 일정 목록에서 🗺️ 구글 지도로 바로 찾아볼 수 있어요</div>
   </div>
   <div class="field">
     <label>사진 (선택)</label>
@@ -1479,6 +1488,7 @@ function renderScheduleTab(t, body) {
             ${s.memo ? `<div class="tl-memo">${linkify(s.memo)}</div>` : ''}
             ${photosFor(s.id).length ? `<div class="tl-photos">${photosFor(s.id).map(p => `<img class="tl-thumb" data-photo="${p.id}" src="${p.data}" alt="사진"/>`).join('')}</div>` : ''}
           </div>
+          <a class="tl-mapbtn" href="${esc(mapUrl(s.title, t.place))}" target="_blank" rel="noopener" title="구글 지도에서 보기">🗺️ 구글 지도</a>
         </div>`).join('') : `<div class="empty" style="padding:20px">이 날은 아직 일정이 없어요</div>`}
     </div>`;
   }
@@ -2336,11 +2346,6 @@ function renderSchPhotos() {
 }
 $('sAddPhoto').addEventListener('click', () => {
   photoTargetSched = schWorkId; $('photoInput').value = ''; $('photoInput').click();
-});
-$('sMapBtn').addEventListener('click', () => {
-  const t = cur(); const title = $('sTitle').value.trim();
-  if (!title) { toast('장소를 먼저 입력해 주세요'); return; }
-  window.open(mapUrl(title, t && t.place), '_blank');
 });
 function updateMemoLinks() {
   const urls = findUrls($('sMemo').value);
