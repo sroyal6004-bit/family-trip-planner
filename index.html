@@ -202,6 +202,7 @@
       font-family: var(--sans); cursor: pointer;
       text-decoration: none; white-space: nowrap;
     }
+    .day-route + .day-route { margin-left: 0; }
     .day-route:active { background: #0e2230; }
 
     /* ── 동선 선택 시트 ── */
@@ -1418,7 +1419,7 @@ function renderScheduleTab(t, body) {
     const idx = days.indexOf(d) + 1;
     const showRoute = items.length >= 2;
     html += `<div class="day-block">
-      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button>` : ''}</div>
+      <div class="day-head"><span class="day-num">DAY ${idx}</span><span class="day-date">${fmtDate(d)}</span>${showRoute ? `<button class="day-route" data-route-day="${d}">🧭 동선파악하기</button><button class="day-route" data-mapday="${d}">🗺️ 동선 지도</button>` : ''}</div>
       ${items.length ? items.map(s => `
         <div class="tl-item" data-sch="${s.id}">
           <div class="tl-timecol">
@@ -1441,7 +1442,6 @@ function renderScheduleTab(t, body) {
     html += `<div class="empty"><div class="big">📅</div>+ 버튼으로 첫 일정을 추가해 보세요</div>`;
   if (t.schedule.length)
     html += `<button class="share-btn" id="shareSchedule" style="margin-top:10px">📤 일정 카톡 공유하기</button>` +
-            `<button class="share-btn" id="routeMapImg" style="margin-top:8px">🗺️ 동선 지도 보기</button>` +
             `<button class="share-btn" id="aiMapPrompt" style="margin-top:8px">🤖 AI 지도 프롬프트 복사</button>`;
   body.innerHTML = html;
 
@@ -1463,10 +1463,10 @@ function renderScheduleTab(t, body) {
     im.addEventListener('click', e => { e.stopPropagation(); openLightbox(im.dataset.photo); }));
   body.querySelectorAll('[data-route-day]').forEach(b =>
     b.addEventListener('click', () => openRouteSheet(b.dataset.routeDay)));
+  body.querySelectorAll('[data-mapday]').forEach(b =>
+    b.addEventListener('click', () => openMapView(t, b.dataset.mapday)));
   const ssb = $('shareSchedule');
   if (ssb) ssb.addEventListener('click', () => shareSchedule(t));
-  const rmb = $('routeMapImg');
-  if (rmb) rmb.addEventListener('click', () => openMapView(t));
   const amb = $('aiMapPrompt');
   if (amb) amb.addEventListener('click', () => copyMapPrompt(t));
 }
@@ -1574,7 +1574,7 @@ function fmtDur(min) {
   const h = Math.floor(min / 60), r = min % 60;
   return r ? `${h}시간 ${r}분 후` : `${h}시간 후`;
 }
-function buildRouteMapCanvas(t) {
+function buildRouteMapCanvas(t, onlyDate) {
   const S = 2, W = 760, PAD = 40, COLS = 3, R = 22, ROWH = 122;
   const font = (cx, w, sz) => { cx.font = `${w} ${sz}px "Noto Sans KR", sans-serif`; };
   const wrap = (cx, text, maxW, maxLines) => {
@@ -1593,11 +1593,12 @@ function buildRouteMapCanvas(t) {
   };
   const innerW = W - 2 * PAD, cellW = innerW / COLS;
   const days = tripDays(t);
-  let y = PAD + 78; const blocks = []; let di = 0;
+  let y = PAD + 78; const blocks = [];
   for (let idx = 0; idx < days.length; idx++) {
+    if (onlyDate && days[idx] !== onlyDate) continue;
     const its = t.schedule.filter(s => s.date === days[idx]).sort((a, b) => (a.time || '99:99') > (b.time || '99:99') ? 1 : -1);
     if (!its.length) continue;
-    const color = ITIN_COLORS[di % ITIN_COLORS.length]; di++;
+    const color = ITIN_COLORS[idx % ITIN_COLORS.length];
     y += 16; const headerY = y; y += 34;
     const startY = y;
     const nodes = its.map((s, i) => {
@@ -1666,12 +1667,14 @@ function buildRouteMapCanvas(t) {
   return cv;
 }
 let mapViewBlob = null, mapViewName = '';
-async function openMapView(t) {
-  if (!t.schedule.length) { toast('먼저 일정을 추가해 주세요'); return; }
+async function openMapView(t, date) {
+  const has = date ? t.schedule.some(s => s.date === date) : t.schedule.length;
+  if (!has) { toast('먼저 일정을 추가해 주세요'); return; }
   toast('동선 지도를 그리는 중...');
   try { await document.fonts.ready; } catch (e) {}
-  const cv = buildRouteMapCanvas(t);
-  mapViewName = `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_동선지도.png`;
+  const cv = buildRouteMapCanvas(t, date);
+  const dayTag = date ? `_DAY${tripDays(t).indexOf(date) + 1}` : '';
+  mapViewName = `${t.name.replace(/[\\/:*?"<>|\s]+/g, '_')}${dayTag}_동선지도.png`;
   cv.toBlob(blob => {
     mapViewBlob = blob;
     $('mapImg').src = cv.toDataURL('image/png');
