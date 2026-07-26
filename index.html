@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="우리 & 여행"/>
-  <meta name="theme-color" content="#4cc3e8"/>
+  <meta name="theme-color" content="#e5a24c"/>
   <title>우리 &amp; 여행</title>
   <link rel="manifest" href="./manifest.json"/>
   <link rel="icon" href="./icon-192.png"/>
@@ -15,23 +15,25 @@
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=DM+Mono:wght@400;500&display=swap');
 
     :root {
-      --bg: #0a0d12;
-      --bg2: #0d1219;
-      --bg3: #101825;
-      --border: #1a2432;
-      --border2: #263547;
-      --accent: #4cc3e8;
-      --accent2: #2a8fc4;
-      --text: #eaf0f4;
-      --text2: #c2ccd4;
-      --muted: #6b7a88;
-      --muted2: #48586a;
-      --green: #6fc98a;
-      --green-bg: #0a120c;
-      --green-border: #17281b;
-      --red: #e07a8a;
-      --red-bg: #180d10;
-      --red-border: #321a20;
+      --bg: #14100b;
+      --bg2: #1c1610;
+      --bg3: #241c14;
+      --border: #2b2118;
+      --border2: #3d2e21;
+      --accent: #e5a24c;
+      --accent2: #c47d31;
+      --accent-bg: #271b0c;
+      --accent-border: #4c3818;
+      --text: #f3ece1;
+      --text2: #dccdba;
+      --muted: #9d8b76;
+      --muted2: #70614f;
+      --green: #a3bd5f;
+      --green-bg: #15150b;
+      --green-border: #2d2f18;
+      --red: #e0806a;
+      --red-bg: #1d110d;
+      --red-border: #3c211a;
       --mono: 'DM Mono', monospace;
       --sans: 'Noto Sans KR', sans-serif;
     }
@@ -64,7 +66,7 @@
     #app { min-height: 100vh; max-width: 640px; margin: 0 auto; padding-bottom: env(safe-area-inset-bottom, 20px); }
     /* 넓은 화면(PC)에서는 가운데 정렬된 폰 폭 칸으로 표시 */
     @media (min-width: 672px) {
-      body { background: #06080c; }
+      body { background: #0a0806; }
       #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--bg); }
       .fab { right: auto; left: 50%; margin-left: 246px; }
       #install-banner { left: 50%; right: auto; margin-left: -308px; width: 616px; }
@@ -74,7 +76,7 @@
     .header {
       position: sticky; top: 0; z-index: 10;
       padding: calc(env(safe-area-inset-top, 0px) + 18px) 20px 16px;
-      background: linear-gradient(180deg, #0c1420 0%, rgba(10,13,18,0.95) 100%);
+      background: linear-gradient(180deg, #1b130b 0%, rgba(20,16,11,0.95) 100%);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
@@ -113,7 +115,7 @@
       border-radius: 20px; white-space: nowrap;
       background: var(--bg3); color: var(--muted);
     }
-    .dday.soon { background: #0e2836; color: var(--accent); }
+    .dday.soon { background: #2b2010; color: var(--accent); }
     .dday.ing { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
     .trip-card-meta {
       display: flex; gap: 14px; margin-top: 12px;
@@ -125,7 +127,7 @@
       width: 100%; padding: 16px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       border: none; border-radius: 14px;
-      font-size: 15px; font-weight: 700; color: #06121a;
+      font-size: 15px; font-weight: 700; color: #2a1c08;
       cursor: pointer; transition: transform 0.15s; margin-top: 4px;
     }
     .add-btn:active { transform: scale(0.98); }
@@ -186,7 +188,7 @@
       background: var(--bg2); border: 1px solid var(--border2);
       color: var(--muted); font-size: 13px; cursor: pointer;
     }
-    .chip.on { background: #0e2836; border-color: var(--accent2); color: var(--accent); font-weight: 700; }
+    .chip.on { background: #2b2010; border-color: var(--accent2); color: var(--accent); font-weight: 700; }
     .chip.fund.on { background: #1a1204; border-color: #4a3410; color: #e0b050; }
     .chip .x { margin-left: 6px; opacity: 0.6; }
 
@@ -197,28 +199,28 @@
       margin-left: auto;
       display: inline-flex; align-items: center; gap: 4px;
       padding: 5px 11px; border-radius: 16px;
-      background: #0c1a24; border: 1px solid #16344a;
+      background: var(--accent-bg); border: 1px solid var(--accent-border);
       color: var(--accent); font-size: 11px; font-weight: 700;
       font-family: var(--sans); cursor: pointer;
       text-decoration: none; white-space: nowrap;
     }
     .day-route + .day-route { margin-left: 0; }
-    .day-route:active { background: #0e2230; }
+    .day-route:active { background: #2f2110; }
     .day-route.route-map-btn { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
     .day-route.route-map-btn:active { background: #0c1710; }
-    .reco-btn { background: #241a0c; border-color: #4a3a16; color: #e8bf4c; }
-    .reco-btn:active { background: #2e2210; }
+    .reco-btn { background: #2a1810; border-color: #4d2f20; color: #e58b5f; }
+    .reco-btn:active { background: #341e13; }
     .reco-count {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-      background: #e8bf4c; color: #241a0c; font-size: 10px; font-weight: 800;
+      background: #e58b5f; color: #2a1810; font-size: 10px; font-weight: 800;
     }
     .reco-item {
       position: relative; padding: 12px 40px 12px 14px; margin-bottom: 8px;
       background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px;
     }
     .reco-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-    .reco-name { font-size: 12px; font-weight: 700; color: #e8bf4c; }
+    .reco-name { font-size: 12px; font-weight: 700; color: #e58b5f; }
     .reco-time { font-size: 11px; color: var(--muted2); }
     .reco-text { font-size: 14px; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
     .reco-del {
@@ -234,13 +236,13 @@
       background: var(--bg2); border: 1px solid var(--border2);
       border-radius: 12px; cursor: pointer;
     }
-    .route-row.on { border-color: var(--accent2); background: #0e2836; }
+    .route-row.on { border-color: var(--accent2); background: #2b2010; }
     .rcheck {
       width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto;
       border: 1.5px solid var(--border2); display: flex; align-items: center;
       justify-content: center; font-size: 13px; color: transparent;
     }
-    .route-row.on .rcheck { background: var(--accent); border-color: var(--accent); color: #06121a; }
+    .route-row.on .rcheck { background: var(--accent); border-color: var(--accent); color: #2a1c08; }
     .route-time { font-family: var(--mono); font-size: 12px; color: var(--accent); min-width: 54px; white-space: nowrap; }
     .route-name { font-size: 14px; flex: 1; min-width: 0; }
     .day-num {
@@ -256,7 +258,7 @@
     .tl-item:active { background: var(--bg3); }
     .tl-timecol { display: flex; flex-direction: column; min-width: 58px; }
     .tl-time {
-      font-family: var(--mono); font-size: 12px; color: #93a4b4;
+      font-family: var(--mono); font-size: 12px; color: #b3a48f;
       padding-top: 2px; white-space: nowrap;
     }
     .tl-body { flex: 1; min-width: 0; }
@@ -267,11 +269,11 @@
     .memo-link-btn {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 7px 11px; border-radius: 9px;
-      background: #0c1a24; border: 1px solid #16344a;
+      background: var(--accent-bg); border: 1px solid var(--accent-border);
       color: var(--accent); font-size: 12px; font-weight: 700; text-decoration: none;
       max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .memo-link-btn:active { background: #0e2230; }
+    .memo-link-btn:active { background: #2f2110; }
     .tl-mapbtn {
       flex: 0 0 auto; align-self: center;
       display: inline-flex; align-items: center; gap: 4px;
@@ -289,10 +291,10 @@
     .sheet-mini-btn {
       margin-top: 8px; display: inline-flex; align-items: center; gap: 6px;
       padding: 9px 14px; border-radius: 10px;
-      background: #0c1a24; border: 1px solid #16344a;
+      background: var(--accent-bg); border: 1px solid var(--accent-border);
       color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer;
     }
-    .sheet-mini-btn:active { background: #0e2230; }
+    .sheet-mini-btn:active { background: #2f2110; }
     .sch-photos { display: flex; flex-wrap: wrap; gap: 10px; }
     .sch-photos:empty { display: none; }
     .sch-thumb-wrap { position: relative; }
@@ -302,7 +304,7 @@
     }
     .sch-thumb-del {
       position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%;
-      background: #1a2432; border: 1px solid var(--border2); color: var(--text2);
+      background: #2b2118; border: 1px solid var(--border2); color: var(--text2);
       font-size: 14px; line-height: 1; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
     }
@@ -348,7 +350,7 @@
     .game-start {
       margin-top: 8px; padding: 14px 34px; border: none; border-radius: 14px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #06121a; font-size: 16px; font-weight: 700; cursor: pointer; font-family: var(--sans);
+      color: #2a1c08; font-size: 16px; font-weight: 700; cursor: pointer; font-family: var(--sans);
     }
     .game-start:active { transform: scale(0.97); }
     .gm-tabs { display: flex; gap: 8px; }
@@ -357,7 +359,7 @@
       border: 1px solid var(--border2); color: var(--muted);
       font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--sans);
     }
-    .gm-tab.on { background: #0e2836; border-color: var(--accent2); color: var(--accent); }
+    .gm-tab.on { background: #2b2010; border-color: var(--accent2); color: var(--accent); }
     #gmOptions { display: flex; flex-direction: column; gap: 12px; align-items: center; }
     #gmOptions .chip-row { justify-content: center; }
     .gm-opt-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-align: center; }
@@ -487,7 +489,7 @@
     .transfer-item {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       padding: 14px 16px; margin-bottom: 8px;
-      background: #0c1a24; border: 1px solid #16344a; border-radius: 12px;
+      background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: 12px;
       font-size: 14px;
     }
     .transfer-amt { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--accent); white-space: nowrap; }
@@ -563,7 +565,7 @@
       flex: 1; padding: 15px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       border: none; border-radius: 12px;
-      font-size: 15px; font-weight: 700; color: #06121a; cursor: pointer;
+      font-size: 15px; font-weight: 700; color: #2a1c08; cursor: pointer;
     }
     .btn-primary:active { transform: scale(0.98); }
     .btn-danger {
@@ -591,8 +593,8 @@
       position: fixed; right: 18px; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
       z-index: 50; width: 56px; height: 56px; border-radius: 50%;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: #06121a; font-size: 26px; font-weight: 700;
-      cursor: pointer; box-shadow: 0 6px 24px rgba(76,195,232,0.35);
+      border: none; color: #2a1c08; font-size: 26px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 6px 24px rgba(229,162,76,0.35);
       display: none; align-items: center; justify-content: center; line-height: 1;
     }
     .fab.show { display: flex; }
@@ -603,23 +605,23 @@
       display: none; position: fixed;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
       left: 12px; right: 12px; z-index: 110;
-      background: linear-gradient(135deg, #04202c, #06293a);
-      border: 1px solid #0e3a50; border-radius: 14px; padding: 14px 16px;
+      background: linear-gradient(135deg, #2a1a0c, #3a2510);
+      border: 1px solid #4c3216; border-radius: 14px; padding: 14px 16px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.6);
     }
     #install-banner.show { display: flex; align-items: center; gap: 12px; }
-    .banner-text { flex: 1; font-size: 13px; color: #7ab8d0; line-height: 1.4; }
+    .banner-text { flex: 1; font-size: 13px; color: #d3b78e; line-height: 1.4; }
     .banner-text strong { color: var(--accent); font-size: 14px; display: block; margin-bottom: 2px; }
     .banner-btn {
       padding: 10px 16px; background: var(--accent); border: none; border-radius: 10px;
-      font-size: 13px; font-weight: 700; color: #06121a; cursor: pointer; white-space: nowrap;
+      font-size: 13px; font-weight: 700; color: #2a1c08; cursor: pointer; white-space: nowrap;
     }
     .banner-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px; line-height: 1; }
 
     .toast {
       position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 90px);
       transform: translateX(-50%); z-index: 120;
-      background: #182838; border: 1px solid var(--border2);
+      background: #2a2118; border: 1px solid var(--border2);
       color: var(--text2); font-size: 13px;
       padding: 11px 20px; border-radius: 24px;
       opacity: 0; pointer-events: none; transition: opacity 0.25s;
@@ -1850,8 +1852,11 @@ function renderExpenseTab(t, body) {
           ${photosFor(e.id).length ? `<div class="exp-photos">${photosFor(e.id).map(p => `<img class="exp-thumb" data-photo="${p.id}" src="${p.data}" alt="영수증"/>`).join('')}</div>` : ''}
         </div>`).join('');
     }
+    html += `<button class="share-btn" id="shareExpense" style="margin-top:12px">📤 경비 내역 공유하기</button>`;
   }
   body.innerHTML = html;
+  const seb = $('shareExpense');
+  if (seb) seb.addEventListener('click', () => shareExpenses(t));
   body.querySelectorAll('[data-exp]').forEach(el =>
     el.addEventListener('click', e => {
       if (e.target.closest('.exp-thumb') || e.target.closest('.exp-addphoto')) return;
@@ -2030,6 +2035,48 @@ async function shareSettlement(t) {
   const text = settlementText(t);
   if (navigator.share) { try { await navigator.share({ title: `${t.name} 정산`, text }); return; } catch {} }
   try { await navigator.clipboard.writeText(text); toast('정산 내용을 복사했어요! 카톡에 붙여넣으세요'); }
+  catch { prompt('아래 내용을 복사하세요', text); }
+}
+
+// ── 경비 내역 공유 ──
+function expenseText(t) {
+  const total = t.expenses.reduce((s, e) => s + e.amount, 0);
+  const perPerson = t.members.length ? total / t.members.length : 0;
+  const L = [];
+  L.push(`🧳 ${t.name} 경비 내역`);
+  if (t.place) L.push(`📍 ${t.place}`);
+  L.push(`기간: ${fmtRange(t)}`);
+  L.push(`총 지출: ${fmt(total)}원 (${t.expenses.length}건 · 1인당 약 ${fmt(perPerson)}원)`);
+  L.push('');
+  const days = tripDays(t);
+  const dates = [...new Set(t.expenses.map(e => e.date))].sort();
+  for (const d of dates) {
+    const items = t.expenses.filter(e => e.date === d);
+    const dayTotal = items.reduce((s, e) => s + e.amount, 0);
+    const idx = days.indexOf(d);
+    L.push(`📅 ${idx >= 0 ? `DAY ${idx + 1} · ` : ''}${fmtDate(d)} — ${fmt(dayTotal)}원`);
+    for (const e of items) {
+      const payer = e.payerId === FUND ? '🏦공금' : memberName(t, e.payerId);
+      const forex = (e.currency && e.currency !== 'KRW') ? ` [${CUR_SYM[e.currency] || ''}${fmtOrig(e.origAmount)}${e.feePct ? ` +${e.feePct}%` : ''}]` : '';
+      L.push(`· ${catEmoji(EXP_CATS, e.cat)} ${e.title} — ${fmt(e.amount)}원 (${payer} 결제·${e.splitIds.length}명)${forex}`);
+    }
+    L.push('');
+  }
+  const byCat = {};
+  for (const e of t.expenses) byCat[e.cat] = (byCat[e.cat] || 0) + e.amount;
+  const catRows = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  if (catRows.length) {
+    L.push('[분류별 합계]');
+    for (const [k, v] of catRows) L.push(`· ${catLabel(EXP_CATS, k)}: ${fmt(v)}원`);
+  }
+  if (t.cloud) { L.push(''); L.push(`🔗 실시간 공유 코드: ${t.code}`); }
+  return L.join('\n').trim();
+}
+async function shareExpenses(t) {
+  if (!t.expenses.length) { toast('먼저 경비를 입력해 주세요'); return; }
+  const text = expenseText(t);
+  if (navigator.share) { try { await navigator.share({ title: `${t.name} 경비 내역`, text }); return; } catch {} }
+  try { await navigator.clipboard.writeText(text); toast('경비 내역을 복사했어요! 카톡에 붙여넣으세요'); }
   catch { prompt('아래 내용을 복사하세요', text); }
 }
 
