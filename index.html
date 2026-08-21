@@ -2191,6 +2191,25 @@ function settlementText(t) {
     const inPart = r.fundIn > 0 ? `회비${fmt(unit.dues)}+결제${fmt(unit.paid)}` : `결제${fmt(unit.paid)}`;
     lines.push(`· ${unit.label}${isT}${who}: ${inPart} / 부담${fmt(unit.share)} → ${unit.balance >= 0 ? '+' : ''}${fmt(unit.balance)}`);
   }
+  // 계산 과정 설명
+  const unitWord = byFam ? '가족' : '사람';
+  let sp = 1;
+  lines.push('');
+  lines.push('📖 왜 이렇게 나왔나요?');
+  lines.push(`${sp++}) 경비마다 함께 나눈 사람 수로 똑같이 나눠 각자의 부담액을 구했어요.`);
+  if (byFam) lines.push(`${sp++}) 같은 가족의 낸 돈과 부담액은 하나로 합쳤어요.`);
+  if (r.fundIn > 0) lines.push(`${sp++}) 공금으로 쓴 경비는 회비에서 나간 것으로 치고, 남은 공금 ${fmt(r.heldFund)}원은 총무가 돌려줘요.`);
+  lines.push(`${sp++}) 낸 돈 − 부담액이 플러스면 받을 돈, 마이너스면 낼 돈이에요. (위 내역 참고)`);
+  if (u.trace.length) {
+    lines.push(`${sp}) 낼 ${unitWord}과 받을 ${unitWord}을 금액이 큰 순서대로 이어 가장 적은 횟수로 송금을 정했어요:`);
+    u.trace.forEach((tr, i) => {
+      const fl = tr.fromLeft, tl = tr.toLeft;
+      const st = fl < 0.5 && tl < 0.5 ? '둘 다 정산 끝!'
+        : fl < 0.5 ? `${u.labelOf(tr.from)} 정산 끝, ${u.labelOf(tr.to)}는 ${fmt(tl)}원 더 받으면 됨`
+        : `${u.labelOf(tr.to)} 다 받음, ${u.labelOf(tr.from)}는 ${fmt(fl)}원 더 내면 됨`;
+      lines.push(`  ${i + 1}. ${u.labelOf(tr.from)} → ${u.labelOf(tr.to)} ${fmt(tr.amt)}원 (${st})`);
+    });
+  } else lines.push(`${sp}) 보낼 돈이 없어요 — 이미 딱 맞아요!`);
   if (t.cloud) { lines.push(''); lines.push(`🔗 실시간 공유 코드: ${t.code}`); }
   return lines.join('\n');
 }
