@@ -499,6 +499,10 @@
     .explain-who { font-family: var(--sans); font-weight: 700; white-space: nowrap; }
     .explain-row .plus { color: var(--green); }
     .explain-row .minus { color: var(--red); }
+    .explain-trace { flex-direction: column; align-items: stretch; gap: 2px; }
+    .trace-main { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .trace-main b { color: var(--accent); }
+    .trace-left { font-family: var(--sans); font-size: 10.5px; color: var(--muted); }
     .seg-toggle { display: flex; gap: 6px; margin: 0 0 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
     .seg { flex: 1; padding: 9px 0; border: none; background: none; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 700; font-family: var(--sans); cursor: pointer; }
     .seg.on { background: var(--accent-bg); color: var(--accent); }
@@ -1998,17 +2002,21 @@ function settleUnits(t, r, byFamily) {
   const creditors = [], debtors = [];
   for (const u of units) { if (u.balance > 0.5) creditors.push({ key: u.key, amt: u.balance }); else if (u.balance < -0.5) debtors.push({ key: u.key, amt: -u.balance }); }
   creditors.sort((a, b) => b.amt - a.amt); debtors.sort((a, b) => b.amt - a.amt);
-  const transfers = []; let ci = 0, di = 0;
+  const transfers = [], trace = []; let ci = 0, di = 0;
   while (ci < creditors.length && di < debtors.length) {
     const pay = Math.min(creditors[ci].amt, debtors[di].amt);
-    if (pay > 0.5) transfers.push({ from: debtors[di].key, to: creditors[ci].key, amt: pay });
     creditors[ci].amt -= pay; debtors[di].amt -= pay;
+    if (pay > 0.5) {
+      transfers.push({ from: debtors[di].key, to: creditors[ci].key, amt: pay });
+      trace.push({ from: debtors[di].key, to: creditors[ci].key, amt: pay,
+                   fromLeft: debtors[di].amt, toLeft: creditors[ci].amt });   // 보낸 뒤 남은 금액
+    }
     if (creditors[ci].amt < 0.5) ci++;
     if (debtors[di].amt < 0.5) di++;
   }
   const labelOf = k => (map.get(k) || {}).label || '?';
   const anyFamily = units.some(u => u.isFamily);
-  return { units, transfers, labelOf, anyFamily };
+  return { units, transfers, trace, labelOf, anyFamily };
 }
 
 // ── 정산 탭 ──
@@ -2113,7 +2121,17 @@ function renderSettleTab(t, body) {
         const res = d2 > 0.5 ? `+${fmt(d2)} 받아요` : d2 < -0.5 ? `−${fmt(-d2)} 내요` : '딱 맞아요';
         return `<div class="explain-row"><span class="explain-who">${esc(unit.label)}</span><span>낸 돈 ${fmt(inAmt)} − 부담 ${fmt(unit.share)}${held} = <b class="${c2}">${res}</b></span></div>`;
       }).join('')}
-      <div class="explain-step" style="margin-top:6px">${step}️⃣ 내야 할 ${unitWord}과 받아야 할 ${unitWord}을 <b>가장 적은 송금 횟수</b>로 짝지어 위의 송금 목록을 만들었어요.</div>
+      <div class="explain-step" style="margin-top:6px">${step}️⃣ 낼 ${unitWord}과 받을 ${unitWord}을 <b>금액이 큰 순서대로</b> 이어서, 가장 적은 횟수로 송금을 정했어요:</div>
+      ${u.trace.length ? u.trace.map((tr, i) => {
+        const fl = tr.fromLeft, tl = tr.toLeft;
+        const status = fl < 0.5 && tl < 0.5 ? `${u.labelOf(tr.from)} · ${u.labelOf(tr.to)} 둘 다 정산 끝! 🎉`
+          : fl < 0.5 ? `${u.labelOf(tr.from)} 정산 끝 · ${u.labelOf(tr.to)}는 ${fmt(tl)}원 더 받으면 됨`
+          : `${u.labelOf(tr.to)} 다 받음 · ${u.labelOf(tr.from)}는 ${fmt(fl)}원 더 내면 됨`;
+        return `<div class="explain-row explain-trace">
+          <div class="trace-main"><span class="explain-who">${i + 1}. ${esc(u.labelOf(tr.from))} → ${esc(u.labelOf(tr.to))}</span><b>${fmt(tr.amt)}원</b></div>
+          <div class="trace-left">→ ${esc(status)}</div>
+        </div>`;
+      }).join('') : `<div class="explain-step" style="margin-left:4px;color:var(--green)">보낼 돈이 없어요 — 이미 딱 맞아요! 🎉</div>`}
     </div>`;
     html += `<button class="share-btn" id="shareSettle">📤 정산 결과 공유하기</button>`;
   }
