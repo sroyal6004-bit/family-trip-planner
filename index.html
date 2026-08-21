@@ -1057,6 +1057,18 @@ function toast(msg) {
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
+// 텍스트 공유: 모바일은 공유창(카톡 등), PC는 클립보드 복사
+// (PC의 navigator.share는 "다시 시도하세요" 같은 빈 공유창이 떠서 사용하지 않음)
+const IS_MOBILE = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+async function shareText(title, text, okMsg) {
+  if (IS_MOBILE && navigator.share) {
+    try { await navigator.share({ title, text }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }   // 사용자가 공유창을 닫음
+  }
+  try { await navigator.clipboard.writeText(text); toast(okMsg || '내용을 복사했어요! 카톡에 붙여넣으세요'); }
+  catch { prompt('아래 내용을 복사하세요', text); }
+}
+
 // ═══════════════ 클라우드 동기화 (Firebase) ═══════════════
 function initCloud() {
   const cfg = window.FIREBASE_CONFIG;
@@ -1663,10 +1675,7 @@ function scheduleText(t) {
   return L.join('\n').trim();
 }
 async function shareSchedule(t) {
-  const text = scheduleText(t);
-  if (navigator.share) { try { await navigator.share({ title: `${t.name} 일정`, text }); return; } catch {} }
-  try { await navigator.clipboard.writeText(text); toast('일정을 복사했어요! 카톡에 붙여넣으세요'); }
-  catch { prompt('아래 내용을 복사하세요', text); }
+  await shareText(`${t.name} 일정`, scheduleText(t), '일정을 복사했어요! 카톡에 붙여넣으세요');
 }
 // ── 동선 지도 색상(날짜별) ──
 const ITIN_COLORS = ['#b5342e', '#d98a1e', '#2f7d4f', '#2a6f9c', '#7a4fb0'];
@@ -1822,8 +1831,9 @@ function _hideMapView() {
 async function saveMapView() {
   if (!mapViewBlob) return;
   const file = new File([mapViewBlob], mapViewName, { type: 'image/png' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: '동선 지도' }); return; } catch (e) {}
+  if (IS_MOBILE && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '동선 지도' }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(mapViewBlob); a.download = mapViewName; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 8000);
@@ -2152,10 +2162,7 @@ function settlementText(t) {
   return lines.join('\n');
 }
 async function shareSettlement(t) {
-  const text = settlementText(t);
-  if (navigator.share) { try { await navigator.share({ title: `${t.name} 정산`, text }); return; } catch {} }
-  try { await navigator.clipboard.writeText(text); toast('정산 내용을 복사했어요! 카톡에 붙여넣으세요'); }
-  catch { prompt('아래 내용을 복사하세요', text); }
+  await shareText(`${t.name} 정산`, settlementText(t), '정산 내용을 복사했어요! 카톡에 붙여넣으세요');
 }
 
 // ── 경비 내역 공유 ──
@@ -2194,10 +2201,7 @@ function expenseText(t) {
 }
 async function shareExpenses(t) {
   if (!t.expenses.length) { toast('먼저 경비를 입력해 주세요'); return; }
-  const text = expenseText(t);
-  if (navigator.share) { try { await navigator.share({ title: `${t.name} 경비 내역`, text }); return; } catch {} }
-  try { await navigator.clipboard.writeText(text); toast('경비 내역을 복사했어요! 카톡에 붙여넣으세요'); }
-  catch { prompt('아래 내용을 복사하세요', text); }
+  await shareText(`${t.name} 경비 내역`, expenseText(t), '경비 내역을 복사했어요! 카톡에 붙여넣으세요');
 }
 
 // ── 멤버 탭 ──
@@ -2290,10 +2294,7 @@ function memberInfoText(t) {
   return L.join('\n').trim();
 }
 async function shareMembers(t) {
-  const text = memberInfoText(t);
-  if (navigator.share) { try { await navigator.share({ title: `${t.name} 멤버 정보`, text }); return; } catch {} }
-  try { await navigator.clipboard.writeText(text); toast('멤버 정보를 복사했어요! (여권 사진은 앱에서 확인)'); }
-  catch { prompt('아래 내용을 복사하세요', text); }
+  await shareText(`${t.name} 멤버 정보`, memberInfoText(t), '멤버 정보를 복사했어요! (여권 사진은 앱에서 확인)');
 }
 
 // ── 설정 탭 ──
@@ -2333,9 +2334,7 @@ function renderSettingsTab(t, body) {
   if (scb) scb.addEventListener('click', async () => {
     const link = `${location.origin}${location.pathname}?trip=${t.code}`;
     const text = `🧳 "${t.name}" 여행에 참여하세요!\n\n아래 링크만 누르면 바로 참여돼요 👇\n${link}\n\n(여행 코드: ${t.code})`;
-    if (navigator.share) { try { await navigator.share({ title: t.name, text }); return; } catch {} }
-    try { await navigator.clipboard.writeText(text); toast('공유 링크를 복사했어요!'); }
-    catch { prompt('아래 내용을 복사하세요', text); }
+    await shareText(t.name, text, '공유 링크를 복사했어요!');
   });
   const ecb = $('enableCloudBtn');
   if (ecb) ecb.addEventListener('click', () => enableCloud(t));
