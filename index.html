@@ -507,6 +507,7 @@
     .seg { flex: 1; padding: 9px 0; border: none; background: none; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 700; font-family: var(--sans); cursor: pointer; }
     .seg.on { background: var(--accent-bg); color: var(--accent); }
     .settle-members { font-size: 11px; color: var(--text2); margin-top: 2px; }
+    .settle-paid { font-size: 10.5px; color: var(--muted); margin-top: 4px; line-height: 1.6; word-break: break-all; }
 
     .settle-member {
       display: flex; justify-content: space-between; align-items: center;
@@ -2018,6 +2019,13 @@ function settleUnits(t, r, byFamily) {
   const anyFamily = units.some(u => u.isFamily);
   return { units, transfers, trace, labelOf, anyFamily };
 }
+// 단위(개인/가족)가 결제한 경비 목록 — "제목 금액(결제자)" 형태
+function unitPaidItems(t, unit) {
+  const ids = new Set(unit.memberIds);
+  const showPayer = unit.isFamily && unit.memberIds.length > 1;
+  return t.expenses.filter(e => ids.has(e.payerId))
+    .map(e => `${e.title} ${fmt(e.amount)}${showPayer ? `(${memberName(t, e.payerId)})` : ''}`);
+}
 
 // ── 정산 탭 ──
 function renderSettleTab(t, body) {
@@ -2099,6 +2107,7 @@ function renderSettleTab(t, body) {
           <div class="settle-name"${ufc ? ` style="color:${ufc}"` : ''}>${esc(unit.label)}${unit.isTreasurer && r.fundIn > 0 ? '<span class="settle-tag">총무</span>' : ''}</div>
           ${members ? `<div class="settle-members">${esc(members)}</div>` : ''}
           <div class="settle-detail">${r.fundIn > 0 ? `회비 ${fmt(unit.dues)} + ` : ''}결제 ${fmt(unit.paid)} · 부담 ${fmt(unit.share)}${unit.isTreasurer && r.fundIn > 0 && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
+          ${unit.paid > 0.5 ? `<div class="settle-paid">💳 ${unitPaidItems(t, unit).map(esc).join(' · ')}</div>` : ''}
         </div>
         <span class="settle-bal ${cls}">${sign}${fmt(diff)}원<small>${diff>0.5?'받을 돈':diff<-0.5?'낼 돈':'정산완료'}</small></span>
       </div>`;
@@ -2190,6 +2199,7 @@ function settlementText(t) {
     const who = byFam && unit.isFamily ? ` [${unit.memberIds.map(id => memberName(t, id)).join(', ')}]` : '';
     const inPart = r.fundIn > 0 ? `회비${fmt(unit.dues)}+결제${fmt(unit.paid)}` : `결제${fmt(unit.paid)}`;
     lines.push(`· ${unit.label}${isT}${who}: ${inPart} / 부담${fmt(unit.share)} → ${unit.balance >= 0 ? '+' : ''}${fmt(unit.balance)}`);
+    if (unit.paid > 0.5) lines.push(`  💳 ${unitPaidItems(t, unit).join(' · ')}`);
   }
   // 계산 과정 설명
   const unitWord = byFam ? '가족' : '사람';
