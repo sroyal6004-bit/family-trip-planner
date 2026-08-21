@@ -485,6 +485,20 @@
       background: none; border: 1px solid var(--border2); border-radius: 8px;
       color: var(--muted); font-size: 11px; padding: 5px 9px; cursor: pointer; white-space: nowrap;
     }
+    .explain-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px; font-size: 12px; color: var(--muted); line-height: 1.7; margin-bottom: 10px;
+    }
+    .explain-step { margin-bottom: 6px; }
+    .explain-step b { color: var(--text2); }
+    .explain-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      padding: 6px 9px; margin: 3px 0; background: var(--bg3); border-radius: 8px;
+      font-family: var(--mono); font-size: 11px; color: var(--text2);
+    }
+    .explain-who { font-family: var(--sans); font-weight: 700; white-space: nowrap; }
+    .explain-row .plus { color: var(--green); }
+    .explain-row .minus { color: var(--red); }
     .seg-toggle { display: flex; gap: 6px; margin: 0 0 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
     .seg { flex: 1; padding: 9px 0; border: none; background: none; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 700; font-family: var(--sans); cursor: pointer; }
     .seg.on { background: var(--accent-bg); color: var(--accent); }
@@ -2005,7 +2019,7 @@ function renderSettleTab(t, body) {
   let html = `<div class="summary-card">
     <div class="summary-label">정산 기준 총액</div>
     <div class="summary-total">₩ ${fmt(total)}</div>
-    <div class="summary-meta">각자 낸 돈(회비+개인결제)과 부담할 몫을 비교해 자동 계산해요</div>
+    <div class="summary-meta">각자 결제한 돈과 부담할 몫을 비교해 자동 계산해요</div>
     ${r.fundIn > 0 ? `<div class="fund-strip">
       <div class="fund-pill"><div class="k">걷은 회비</div><div class="v">${fmt(r.fundIn)}</div></div>
       <div class="fund-pill"><div class="k">공금 사용</div><div class="v">${fmt(r.fundOut)}</div></div>
@@ -2043,23 +2057,9 @@ function renderSettleTab(t, body) {
     </div>`;
   }).join('');
 
-  // 회비 입력 영역
-  html += `<div class="divider"><span class="divider-label">💰 회비 (미리 걷은 돈)</span><div class="divider-line"></div></div>`;
-  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">총무를 정하고, 각자 낸 회비를 입력하세요. 공금으로 쓴 경비는 경비 추가 때 <b>🏦 공금</b>으로 표시하면 돼요.</div>`;
-  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">총무 (공금 보관자)</div>`;
-  html += `<div class="chip-row" id="treasurerChips" style="margin-bottom:14px">${t.members.map(m =>
-    `<span class="chip ${r.treasurerId===m.id?'on':''}" data-treasurer="${m.id}">${esc(m.name)}</span>`).join('')}</div>`;
-  html += t.members.map(m => `
-    <div class="dues-row">
-      <span class="dues-name">${esc(m.name)}</span>
-      <input class="dues-input" type="text" inputmode="numeric" data-dues="${m.id}"
-             value="${(Number(t.dues[m.id])||0) ? fmt(t.dues[m.id]) : ''}" placeholder="0"/>
-    </div>`).join('');
-  html += `<div class="treasurer-note">💡 회비를 안 걷었으면 비워두세요. 그러면 각자 결제한 경비로만 정산됩니다.</div>`;
-
   // 결과
   if (!t.expenses.length && r.fundIn === 0) {
-    html += `<div class="empty"><div class="big">🧮</div>회비나 경비를 입력하면<br/>누가 누구에게 보낼지 자동으로 계산해 드려요</div>`;
+    html += `<div class="empty"><div class="big">🧮</div>경비를 입력하면<br/>누가 누구에게 보낼지 자동으로 계산해 드려요</div>`;
   } else {
     const u = settleUnits(t, r, settleByFamily);
     html += `<div class="divider"><span class="divider-label">💸 이렇게 보내면 끝</span><div class="divider-line"></div></div>`;
@@ -2088,13 +2088,33 @@ function renderSettleTab(t, body) {
       const ufc = unit.isFamily ? famColor[unit.repId] : null;
       html += `<div class="settle-member"${ufc ? ` style="border-left:3px solid ${ufc}"` : ''}>
         <div>
-          <div class="settle-name"${ufc ? ` style="color:${ufc}"` : ''}>${esc(unit.label)}${unit.isTreasurer ? '<span class="settle-tag">총무</span>' : ''}</div>
+          <div class="settle-name"${ufc ? ` style="color:${ufc}"` : ''}>${esc(unit.label)}${unit.isTreasurer && r.fundIn > 0 ? '<span class="settle-tag">총무</span>' : ''}</div>
           ${members ? `<div class="settle-members">${esc(members)}</div>` : ''}
-          <div class="settle-detail">회비 ${fmt(unit.dues)} + 결제 ${fmt(unit.paid)} · 부담 ${fmt(unit.share)}${unit.isTreasurer && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
+          <div class="settle-detail">${r.fundIn > 0 ? `회비 ${fmt(unit.dues)} + ` : ''}결제 ${fmt(unit.paid)} · 부담 ${fmt(unit.share)}${unit.isTreasurer && r.fundIn > 0 && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
         </div>
         <span class="settle-bal ${cls}">${sign}${fmt(diff)}원<small>${diff>0.5?'받을 돈':diff<-0.5?'낼 돈':'정산완료'}</small></span>
       </div>`;
     }
+
+    // 📖 정산 계산 설명
+    const unitWord = settleByFamily && u.anyFamily ? '가족' : '사람';
+    let step = 1;
+    html += `<div class="divider"><span class="divider-label">📖 왜 이렇게 나왔나요?</span><div class="divider-line"></div></div>`;
+    html += `<div class="explain-card">
+      <div class="explain-step">${step++}️⃣ 경비마다 <b>함께 나눈 사람 수로 똑같이 나눠</b> 각자의 부담액을 구했어요.</div>
+      ${settleByFamily && u.anyFamily ? `<div class="explain-step">${step++}️⃣ 같은 가족의 낸 돈과 부담액은 <b>하나로 합쳤어요.</b></div>` : ''}
+      ${r.fundIn > 0 ? `<div class="explain-step">${step++}️⃣ 공금으로 쓴 경비는 회비에서 나간 것으로 치고, 남은 공금 ${fmt(r.heldFund)}원은 총무가 돌려주는 것으로 계산했어요.</div>` : ''}
+      <div class="explain-step">${step++}️⃣ ${unitWord}마다 <b>낸 돈 − 부담액</b>을 계산하면:</div>
+      ${u.units.map(unit => {
+        const d2 = unit.balance;
+        const c2 = d2 > 0.5 ? 'plus' : d2 < -0.5 ? 'minus' : '';
+        const inAmt = unit.dues + unit.paid;
+        const held = unit.isTreasurer && r.fundIn > 0 && Math.abs(r.heldFund) > 0.5 ? ` − 공금반환 ${fmt(r.heldFund)}` : '';
+        const res = d2 > 0.5 ? `+${fmt(d2)} 받아요` : d2 < -0.5 ? `−${fmt(-d2)} 내요` : '딱 맞아요';
+        return `<div class="explain-row"><span class="explain-who">${esc(unit.label)}</span><span>낸 돈 ${fmt(inAmt)} − 부담 ${fmt(unit.share)}${held} = <b class="${c2}">${res}</b></span></div>`;
+      }).join('')}
+      <div class="explain-step" style="margin-top:6px">${step}️⃣ 내야 할 ${unitWord}과 받아야 할 ${unitWord}을 <b>가장 적은 송금 횟수</b>로 짝지어 위의 송금 목록을 만들었어요.</div>
+    </div>`;
     html += `<button class="share-btn" id="shareSettle">📤 정산 결과 공유하기</button>`;
   }
   body.innerHTML = html;
@@ -2102,11 +2122,6 @@ function renderSettleTab(t, body) {
   // 개인별 / 가족별 전환
   body.querySelectorAll('[data-settlemode]').forEach(bt =>
     bt.addEventListener('click', () => { settleByFamily = bt.dataset.settlemode === 'fam'; render(); }));
-  // 총무 선택
-  body.querySelectorAll('[data-treasurer]').forEach(c =>
-    c.addEventListener('click', () => {
-      t.treasurerId = c.dataset.treasurer; save(); syncPush(t); render();
-    }));
   // 가족 묶기: ① 대표 클릭 → ② 구성원 클릭(토글, 여러 명) → 대표 다시 클릭으로 완료
   body.querySelectorAll('[data-fam]').forEach(ch =>
     ch.addEventListener('click', () => {
@@ -2130,18 +2145,6 @@ function renderSettleTab(t, body) {
       if (famRepSel === bt.dataset.famdel) famRepSel = null;
       syncFamilyStrings(t); save(); syncPush(t); render();
     }));
-  // 회비 입력 (숫자 포맷 + 저장)
-  body.querySelectorAll('[data-dues]').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 12);
-      e.target.value = raw ? Number(raw).toLocaleString('ko-KR') : '';
-    });
-    inp.addEventListener('change', e => {
-      const val = Number(e.target.value.replace(/[^\d]/g, '')) || 0;
-      t.dues[inp.dataset.dues] = val;
-      save(); syncPush(t); render();
-    });
-  });
   const sb = $('shareSettle');
   if (sb) sb.addEventListener('click', () => shareSettlement(t));
 }
@@ -2165,9 +2168,10 @@ function settlementText(t) {
   lines.push('');
   lines.push(byFam ? '👨‍👩‍👧 가족별 내역' : '👤 멤버별 내역');
   for (const unit of u.units) {
-    const isT = unit.isTreasurer ? '(총무)' : '';
+    const isT = unit.isTreasurer && r.fundIn > 0 ? '(총무)' : '';
     const who = byFam && unit.isFamily ? ` [${unit.memberIds.map(id => memberName(t, id)).join(', ')}]` : '';
-    lines.push(`· ${unit.label}${isT}${who}: 회비${fmt(unit.dues)}+결제${fmt(unit.paid)} / 부담${fmt(unit.share)} → ${unit.balance >= 0 ? '+' : ''}${fmt(unit.balance)}`);
+    const inPart = r.fundIn > 0 ? `회비${fmt(unit.dues)}+결제${fmt(unit.paid)}` : `결제${fmt(unit.paid)}`;
+    lines.push(`· ${unit.label}${isT}${who}: ${inPart} / 부담${fmt(unit.share)} → ${unit.balance >= 0 ? '+' : ''}${fmt(unit.balance)}`);
   }
   if (t.cloud) { lines.push(''); lines.push(`🔗 실시간 공유 코드: ${t.code}`); }
   return lines.join('\n');
