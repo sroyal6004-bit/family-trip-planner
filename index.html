@@ -470,14 +470,21 @@
       padding: 10px 12px; margin-bottom: 8px;
       background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
     }
-    .dues-name { flex: 1 1 46px; min-width: 40px; font-size: 14px; font-weight: 500; }
-    .dues-input { width: 96px !important; flex: 0 0 auto; text-align: right; font-family: var(--mono); padding: 9px 10px !important; }
-    .fam-input { width: 96px !important; flex: 0 0 auto; text-align: left; font-family: var(--sans); font-size: 13px; padding: 9px 10px !important; }
-    .dues-head { display: flex; align-items: center; gap: 10px; padding: 0 14px 6px; font-size: 11px; color: var(--muted2); }
-    .dues-head span:nth-child(1) { flex: 1 1 46px; min-width: 40px; }
-    .dues-head span:nth-child(2) { width: 96px; flex: 0 0 auto; }
-    .dues-head span:nth-child(3) { width: 96px; flex: 0 0 auto; text-align: right; }
+    .dues-name { flex: 1; font-size: 14px; font-weight: 500; }
+    .dues-input { width: 130px !important; text-align: right; font-family: var(--mono); padding: 9px 11px !important; }
     .treasurer-note { font-size: 11px; color: var(--muted2); line-height: 1.7; margin: 2px 4px 12px; }
+    .chip.fam-in { border-color: var(--green-border); background: var(--green-bg); color: var(--green); font-weight: 700; }
+    .fam-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; margin-bottom: 8px;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    }
+    .fam-row-name { font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .fam-row-members { flex: 1; font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fam-del {
+      background: none; border: 1px solid var(--border2); border-radius: 8px;
+      color: var(--muted); font-size: 11px; padding: 5px 9px; cursor: pointer; white-space: nowrap;
+    }
     .seg-toggle { display: flex; gap: 6px; margin: 0 0 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
     .seg { flex: 1; padding: 9px 0; border: none; background: none; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 700; font-family: var(--sans); cursor: pointer; }
     .seg.on { background: var(--accent-bg); color: var(--accent); }
@@ -967,6 +974,15 @@ function normalizeTrip(t) {
   if (typeof t.theme !== 'string') t.theme = '';
   if (!Array.isArray(t.recos)) t.recos = [];
   for (const m of t.members) if (typeof m.family !== 'string') m.family = '';
+  // 가족(그룹): famRep = 대표 멤버 id. 옛 버전의 family 문자열은 최초 1회만 이관
+  const needFamMig = t.members.some(m => typeof m.famRep !== 'string');
+  for (const m of t.members) if (typeof m.famRep !== 'string') m.famRep = '';
+  if (needFamMig) {
+    const g = {};
+    for (const m of t.members) { const f = (m.family || '').trim(); if (f && !m.famRep) (g[f] = g[f] || []).push(m); }
+    for (const list of Object.values(g)) if (list.length > 1) for (const m of list) m.famRep = list[0].id;
+  }
+  for (const m of t.members) if (m.famRep && !t.members.some(x => x.id === m.famRep)) m.famRep = '';
   return t;
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
@@ -1934,18 +1950,26 @@ function computeSettlement(t) {
 
 // ── 정산 단위(개인/가족) 묶기 + 송금 계산 ──
 let settleByFamily = false;
+let famRepSel = null;   // 가족 묶기: 현재 선택된 대표
+function syncFamilyStrings(t) {   // 옛 버전 호환용 family 문자열 동기화
+  for (const m of t.members) m.family = m.famRep ? memberName(t, m.famRep) + '네' : '';
+}
 function settleUnits(t, r, byFamily) {
   const map = new Map(); const order = [];
   for (const m of t.members) {
-    const fam = byFamily ? (m.family || '').trim() : '';
-    const key = fam ? 'F:' + fam : 'M:' + m.id;
-    if (!map.has(key)) { map.set(key, { key, label: fam || m.name, isFamily: !!fam, memberIds: [], dues: 0, paid: 0, share: 0, balance: 0, isTreasurer: false }); order.push(key); }
+    const rep = byFamily ? (m.famRep || '') : '';
+    const key = rep ? 'F:' + rep : 'M:' + m.id;
+    if (!map.has(key)) { map.set(key, { key, repId: rep, label: '', isFamily: false, memberIds: [], dues: 0, paid: 0, share: 0, balance: 0, isTreasurer: false }); order.push(key); }
     const u = map.get(key), b = r.bal[m.id];
     u.memberIds.push(m.id);
     u.dues += b.dues; u.paid += b.paid; u.share += b.share; u.balance += b.balance;
     if (m.id === r.treasurerId) u.isTreasurer = true;
   }
   const units = order.map(k => map.get(k));
+  for (const u of units) {
+    u.isFamily = !!u.repId && u.memberIds.length > 1;
+    u.label = u.isFamily ? memberName(t, u.repId) + '네' : memberName(t, u.memberIds[0]);
+  }
   const creditors = [], debtors = [];
   for (const u of units) { if (u.balance > 0.5) creditors.push({ key: u.key, amt: u.balance }); else if (u.balance < -0.5) debtors.push({ key: u.key, amt: -u.balance }); }
   creditors.sort((a, b) => b.amt - a.amt); debtors.sort((a, b) => b.amt - a.amt);
@@ -1958,7 +1982,7 @@ function settleUnits(t, r, byFamily) {
     if (debtors[di].amt < 0.5) di++;
   }
   const labelOf = k => (map.get(k) || {}).label || '?';
-  const anyFamily = t.members.some(m => (m.family || '').trim());
+  const anyFamily = units.some(u => u.isFamily);
   return { units, transfers, labelOf, anyFamily };
 }
 
@@ -1978,20 +2002,36 @@ function renderSettleTab(t, body) {
     </div>` : ''}
   </div>`;
 
-  // 회비 · 가족 입력 영역
-  const famNames = [...new Set(t.members.map(m => (m.family||'').trim()).filter(Boolean))];
-  html += `<div class="divider"><span class="divider-label">👨‍👩‍👧 가족(그룹) · 💰 회비</span><div class="divider-line"></div></div>`;
-  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">다른 가족과 함께 갔다면 <b>같은 가족끼리 같은 이름</b>을 적어주세요(비우면 개인). 회비를 미리 걷었다면 각자 낸 금액도 입력하세요.</div>`;
+  // 가족(그룹) 묶기 — 대표를 누르고 구성원을 눌러서 묶기
+  const famReps = {};
+  for (const m of t.members) if (m.famRep) (famReps[m.famRep] = famReps[m.famRep] || []).push(m);
+  html += `<div class="divider"><span class="divider-label">👨‍👩‍👧 가족(그룹) 묶기</span><div class="divider-line"></div></div>`;
+  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">${famRepSel
+    ? `이제 <b>${esc(memberName(t, famRepSel))}</b>님과 같은 가족인 구성원을 차례로 누르세요. 끝나면 <b>${esc(memberName(t, famRepSel))}</b>님을 다시 누르면 완료!`
+    : `다른 가족과 함께 갔다면 ① <b>가족 대표</b>를 먼저 누르고 ② 구성원들을 누르세요. (여러 명 가능)`}</div>`;
+  html += `<div class="chip-row" style="margin-bottom:10px">${t.members.map(m => {
+    const isSel = famRepSel === m.id;
+    const inSel = famRepSel && !isSel && m.famRep === famRepSel;
+    const isRep = famReps[m.id] && famReps[m.id].length > 1;
+    return `<span class="chip ${isSel ? 'on' : ''} ${inSel ? 'fam-in' : ''}" data-fam="${m.id}">${(isSel || isRep) ? '👑 ' : ''}${inSel ? '✓ ' : ''}${esc(m.name)}</span>`;
+  }).join('')}</div>`;
+  const famList = Object.entries(famReps).filter(([, ms]) => ms.length > 1);
+  html += famList.map(([rep, ms]) => `
+    <div class="fam-row">
+      <span class="fam-row-name">👨‍👩‍👧 ${esc(memberName(t, rep))}네</span>
+      <span class="fam-row-members">${ms.map(x => esc(x.name)).join(', ')}</span>
+      <button class="fam-del" data-famdel="${rep}">해제</button>
+    </div>`).join('');
+
+  // 회비 입력 영역
+  html += `<div class="divider"><span class="divider-label">💰 회비 (미리 걷은 돈)</span><div class="divider-line"></div></div>`;
+  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">총무를 정하고, 각자 낸 회비를 입력하세요. 공금으로 쓴 경비는 경비 추가 때 <b>🏦 공금</b>으로 표시하면 돼요.</div>`;
   html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">총무 (공금 보관자)</div>`;
   html += `<div class="chip-row" id="treasurerChips" style="margin-bottom:14px">${t.members.map(m =>
     `<span class="chip ${r.treasurerId===m.id?'on':''}" data-treasurer="${m.id}">${esc(m.name)}</span>`).join('')}</div>`;
-  html += `<datalist id="familyList">${famNames.map(f => `<option value="${esc(f)}"></option>`).join('')}</datalist>`;
-  html += `<div class="dues-head"><span>멤버</span><span>가족(그룹)</span><span>회비</span></div>`;
   html += t.members.map(m => `
     <div class="dues-row">
       <span class="dues-name">${esc(m.name)}</span>
-      <input class="fam-input" list="familyList" data-family="${m.id}"
-             value="${esc(m.family||'')}" placeholder="가족" maxlength="20" autocomplete="off"/>
       <input class="dues-input" type="text" inputmode="numeric" data-dues="${m.id}"
              value="${(Number(t.dues[m.id])||0) ? fmt(t.dues[m.id]) : ''}" placeholder="0"/>
     </div>`).join('');
@@ -2008,7 +2048,7 @@ function renderSettleTab(t, body) {
       <button class="seg ${settleByFamily?'on':''}" data-settlemode="fam">👨‍👩‍👧 가족별</button>
     </div>`;
     if (settleByFamily && !u.anyFamily)
-      html += `<div style="font-size:11px;color:var(--muted2);margin:0 2px 10px">아직 가족(그룹)을 지정하지 않아 개인별과 동일하게 표시돼요. 위에서 가족 이름을 적어보세요.</div>`;
+      html += `<div style="font-size:11px;color:var(--muted2);margin:0 2px 10px">아직 가족(그룹)을 묶지 않아 개인별과 동일하게 표시돼요. 위의 <b>가족(그룹) 묶기</b>에서 대표와 구성원을 눌러보세요.</div>`;
     if (!u.transfers.length) {
       html += `<div class="empty" style="padding:16px">이미 딱 맞아요! 보낼 돈이 없습니다 🎉</div>`;
     } else {
@@ -2046,13 +2086,29 @@ function renderSettleTab(t, body) {
     c.addEventListener('click', () => {
       t.treasurerId = c.dataset.treasurer; save(); syncPush(t); render();
     }));
-  // 가족(그룹) 지정 (입력 중 리렌더 방지 → blur/change에서 저장)
-  body.querySelectorAll('[data-family]').forEach(inp => {
-    inp.addEventListener('change', e => {
-      const m = t.members.find(x => x.id === inp.dataset.family);
-      if (m) { m.family = e.target.value.trim(); save(); syncPush(t); render(); }
-    });
-  });
+  // 가족 묶기: ① 대표 클릭 → ② 구성원 클릭(토글, 여러 명) → 대표 다시 클릭으로 완료
+  body.querySelectorAll('[data-fam]').forEach(ch =>
+    ch.addEventListener('click', () => {
+      const id = ch.dataset.fam;
+      if (!famRepSel) { famRepSel = id; render(); return; }
+      if (famRepSel === id) { famRepSel = null; render(); return; }
+      const m = t.members.find(x => x.id === id);
+      const rep = t.members.find(x => x.id === famRepSel);
+      if (!m || !rep) { famRepSel = null; render(); return; }
+      if (m.famRep === famRepSel) m.famRep = '';   // 이미 구성원이면 빼기
+      else {
+        for (const x of t.members) if (x.famRep === m.id && x.id !== m.id) x.famRep = '';  // 그가 다른 가족의 대표였다면 그 가족은 해체
+        m.famRep = famRepSel; rep.famRep = famRepSel;
+      }
+      if (!t.members.some(x => x.famRep === famRepSel && x.id !== famRepSel)) rep.famRep = '';  // 대표 혼자 남으면 해제
+      syncFamilyStrings(t); save(); syncPush(t); render();
+    }));
+  body.querySelectorAll('[data-famdel]').forEach(bt =>
+    bt.addEventListener('click', () => {
+      for (const x of t.members) if (x.famRep === bt.dataset.famdel) x.famRep = '';
+      if (famRepSel === bt.dataset.famdel) famRepSel = null;
+      syncFamilyStrings(t); save(); syncPush(t); render();
+    }));
   // 회비 입력 (숫자 포맷 + 저장)
   body.querySelectorAll('[data-dues]').forEach(inp => {
     inp.addEventListener('input', e => {
