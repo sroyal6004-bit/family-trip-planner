@@ -1961,6 +1961,7 @@ function computeSettlement(t) {
 // ── 정산 단위(개인/가족) 묶기 + 송금 계산 ──
 let settleByFamily = false;
 let famRepSel = null;   // 가족 묶기: 현재 선택된 대표
+const FAM_COLORS = ['#e58b5f', '#a3bd5f', '#e5c95f', '#6fb3c9', '#c98bd6', '#d98a8a'];  // 가족별 고유 색
 function syncFamilyStrings(t) {   // 옛 버전 호환용 family 문자열 동기화
   for (const m of t.members) m.family = m.famRep ? memberName(t, m.famRep) + '네' : '';
 }
@@ -2012,9 +2013,13 @@ function renderSettleTab(t, body) {
     </div>` : ''}
   </div>`;
 
-  // 가족(그룹) 묶기 — 대표를 누르고 구성원을 눌러서 묶기
+  // 가족(그룹) 묶기 — 대표를 누르고 구성원을 눌러서 묶기 (가족마다 고유 색)
   const famReps = {};
   for (const m of t.members) if (m.famRep) (famReps[m.famRep] = famReps[m.famRep] || []).push(m);
+  const famColor = {}; let fci = 0;
+  for (const m of t.members)
+    if (m.famRep && famReps[m.famRep] && famReps[m.famRep].length > 1 && !(m.famRep in famColor))
+      famColor[m.famRep] = FAM_COLORS[fci++ % FAM_COLORS.length];
   html += `<div class="divider"><span class="divider-label">👨‍👩‍👧 가족(그룹) 묶기</span><div class="divider-line"></div></div>`;
   html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">${famRepSel
     ? `이제 <b>${esc(memberName(t, famRepSel))}</b>님과 같은 가족인 구성원을 차례로 누르세요. 끝나면 <b>${esc(memberName(t, famRepSel))}</b>님을 다시 누르면 완료!`
@@ -2023,15 +2028,20 @@ function renderSettleTab(t, body) {
     const isSel = famRepSel === m.id;
     const inSel = famRepSel && !isSel && m.famRep === famRepSel;
     const isRep = famReps[m.id] && famReps[m.id].length > 1;
-    return `<span class="chip ${isSel ? 'on' : ''} ${inSel ? 'fam-in' : ''}" data-fam="${m.id}">${(isSel || isRep) ? '👑 ' : ''}${inSel ? '✓ ' : ''}${esc(m.name)}</span>`;
+    const fc = m.famRep ? famColor[m.famRep] : null;
+    const st = fc ? ` style="border-color:${fc};color:${fc};background:${fc}${isSel ? '3a' : '1e'}"` : '';
+    return `<span class="chip ${isSel ? 'on' : ''} ${inSel ? 'fam-in' : ''}" data-fam="${m.id}"${st}>${(isSel || isRep) ? '👑 ' : ''}${inSel ? '✓ ' : ''}${esc(m.name)}</span>`;
   }).join('')}</div>`;
   const famList = Object.entries(famReps).filter(([, ms]) => ms.length > 1);
-  html += famList.map(([rep, ms]) => `
-    <div class="fam-row">
-      <span class="fam-row-name">👨‍👩‍👧 ${esc(memberName(t, rep))}네</span>
+  html += famList.map(([rep, ms]) => {
+    const fc = famColor[rep];
+    return `
+    <div class="fam-row" style="border-left:3px solid ${fc}">
+      <span class="fam-row-name" style="color:${fc}">👨‍👩‍👧 ${esc(memberName(t, rep))}네</span>
       <span class="fam-row-members">${ms.map(x => esc(x.name)).join(', ')}</span>
       <button class="fam-del" data-famdel="${rep}">해제</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   // 회비 입력 영역
   html += `<div class="divider"><span class="divider-label">💰 회비 (미리 걷은 돈)</span><div class="divider-line"></div></div>`;
@@ -2075,9 +2085,10 @@ function renderSettleTab(t, body) {
       const cls = diff > 0.5 ? 'plus' : diff < -0.5 ? 'minus' : '';
       const sign = diff > 0.5 ? '+' : '';
       const members = settleByFamily && unit.isFamily ? unit.memberIds.map(id => memberName(t, id)).join(', ') : '';
-      html += `<div class="settle-member">
+      const ufc = unit.isFamily ? famColor[unit.repId] : null;
+      html += `<div class="settle-member"${ufc ? ` style="border-left:3px solid ${ufc}"` : ''}>
         <div>
-          <div class="settle-name">${esc(unit.label)}${unit.isTreasurer ? '<span class="settle-tag">총무</span>' : ''}</div>
+          <div class="settle-name"${ufc ? ` style="color:${ufc}"` : ''}>${esc(unit.label)}${unit.isTreasurer ? '<span class="settle-tag">총무</span>' : ''}</div>
           ${members ? `<div class="settle-members">${esc(members)}</div>` : ''}
           <div class="settle-detail">회비 ${fmt(unit.dues)} + 결제 ${fmt(unit.paid)} · 부담 ${fmt(unit.share)}${unit.isTreasurer && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
         </div>
