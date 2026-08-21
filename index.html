@@ -470,9 +470,18 @@
       padding: 10px 12px; margin-bottom: 8px;
       background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
     }
-    .dues-name { flex: 1; font-size: 14px; font-weight: 500; }
-    .dues-input { width: 130px !important; text-align: right; font-family: var(--mono); padding: 9px 11px !important; }
+    .dues-name { flex: 1 1 46px; min-width: 40px; font-size: 14px; font-weight: 500; }
+    .dues-input { width: 96px !important; flex: 0 0 auto; text-align: right; font-family: var(--mono); padding: 9px 10px !important; }
+    .fam-input { width: 96px !important; flex: 0 0 auto; text-align: left; font-family: var(--sans); font-size: 13px; padding: 9px 10px !important; }
+    .dues-head { display: flex; align-items: center; gap: 10px; padding: 0 14px 6px; font-size: 11px; color: var(--muted2); }
+    .dues-head span:nth-child(1) { flex: 1 1 46px; min-width: 40px; }
+    .dues-head span:nth-child(2) { width: 96px; flex: 0 0 auto; }
+    .dues-head span:nth-child(3) { width: 96px; flex: 0 0 auto; text-align: right; }
     .treasurer-note { font-size: 11px; color: var(--muted2); line-height: 1.7; margin: 2px 4px 12px; }
+    .seg-toggle { display: flex; gap: 6px; margin: 0 0 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
+    .seg { flex: 1; padding: 9px 0; border: none; background: none; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 700; font-family: var(--sans); cursor: pointer; }
+    .seg.on { background: var(--accent-bg); color: var(--accent); }
+    .settle-members { font-size: 11px; color: var(--text2); margin-top: 2px; }
 
     .settle-member {
       display: flex; justify-content: space-between; align-items: center;
@@ -957,6 +966,7 @@ function normalizeTrip(t) {
   if (typeof t.cloud !== 'boolean') t.cloud = false;
   if (typeof t.theme !== 'string') t.theme = '';
   if (!Array.isArray(t.recos)) t.recos = [];
+  for (const m of t.members) if (typeof m.family !== 'string') m.family = '';
   return t;
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
@@ -1922,6 +1932,36 @@ function computeSettlement(t) {
   return { bal, transfers, treasurerId, fundIn, fundOut, heldFund };
 }
 
+// ── 정산 단위(개인/가족) 묶기 + 송금 계산 ──
+let settleByFamily = false;
+function settleUnits(t, r, byFamily) {
+  const map = new Map(); const order = [];
+  for (const m of t.members) {
+    const fam = byFamily ? (m.family || '').trim() : '';
+    const key = fam ? 'F:' + fam : 'M:' + m.id;
+    if (!map.has(key)) { map.set(key, { key, label: fam || m.name, isFamily: !!fam, memberIds: [], dues: 0, paid: 0, share: 0, balance: 0, isTreasurer: false }); order.push(key); }
+    const u = map.get(key), b = r.bal[m.id];
+    u.memberIds.push(m.id);
+    u.dues += b.dues; u.paid += b.paid; u.share += b.share; u.balance += b.balance;
+    if (m.id === r.treasurerId) u.isTreasurer = true;
+  }
+  const units = order.map(k => map.get(k));
+  const creditors = [], debtors = [];
+  for (const u of units) { if (u.balance > 0.5) creditors.push({ key: u.key, amt: u.balance }); else if (u.balance < -0.5) debtors.push({ key: u.key, amt: -u.balance }); }
+  creditors.sort((a, b) => b.amt - a.amt); debtors.sort((a, b) => b.amt - a.amt);
+  const transfers = []; let ci = 0, di = 0;
+  while (ci < creditors.length && di < debtors.length) {
+    const pay = Math.min(creditors[ci].amt, debtors[di].amt);
+    if (pay > 0.5) transfers.push({ from: debtors[di].key, to: creditors[ci].key, amt: pay });
+    creditors[ci].amt -= pay; debtors[di].amt -= pay;
+    if (creditors[ci].amt < 0.5) ci++;
+    if (debtors[di].amt < 0.5) di++;
+  }
+  const labelOf = k => (map.get(k) || {}).label || '?';
+  const anyFamily = t.members.some(m => (m.family || '').trim());
+  return { units, transfers, labelOf, anyFamily };
+}
+
 // ── 정산 탭 ──
 function renderSettleTab(t, body) {
   const total = t.expenses.reduce((s,e) => s + e.amount, 0);
@@ -1938,15 +1978,20 @@ function renderSettleTab(t, body) {
     </div>` : ''}
   </div>`;
 
-  // 회비 입력 영역
-  html += `<div class="divider"><span class="divider-label">💰 회비 (미리 걷은 돈)</span><div class="divider-line"></div></div>`;
-  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">총무를 정하고, 각자 낸 회비를 입력하세요. 공금으로 쓴 경비는 경비 추가 때 <b>🏦 공금</b>으로 표시하면 돼요.</div>`;
+  // 회비 · 가족 입력 영역
+  const famNames = [...new Set(t.members.map(m => (m.family||'').trim()).filter(Boolean))];
+  html += `<div class="divider"><span class="divider-label">👨‍👩‍👧 가족(그룹) · 💰 회비</span><div class="divider-line"></div></div>`;
+  html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 10px">다른 가족과 함께 갔다면 <b>같은 가족끼리 같은 이름</b>을 적어주세요(비우면 개인). 회비를 미리 걷었다면 각자 낸 금액도 입력하세요.</div>`;
   html += `<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">총무 (공금 보관자)</div>`;
   html += `<div class="chip-row" id="treasurerChips" style="margin-bottom:14px">${t.members.map(m =>
     `<span class="chip ${r.treasurerId===m.id?'on':''}" data-treasurer="${m.id}">${esc(m.name)}</span>`).join('')}</div>`;
+  html += `<datalist id="familyList">${famNames.map(f => `<option value="${esc(f)}"></option>`).join('')}</datalist>`;
+  html += `<div class="dues-head"><span>멤버</span><span>가족(그룹)</span><span>회비</span></div>`;
   html += t.members.map(m => `
     <div class="dues-row">
       <span class="dues-name">${esc(m.name)}</span>
+      <input class="fam-input" list="familyList" data-family="${m.id}"
+             value="${esc(m.family||'')}" placeholder="가족" maxlength="20" autocomplete="off"/>
       <input class="dues-input" type="text" inputmode="numeric" data-dues="${m.id}"
              value="${(Number(t.dues[m.id])||0) ? fmt(t.dues[m.id]) : ''}" placeholder="0"/>
     </div>`).join('');
@@ -1956,28 +2001,35 @@ function renderSettleTab(t, body) {
   if (!t.expenses.length && r.fundIn === 0) {
     html += `<div class="empty"><div class="big">🧮</div>회비나 경비를 입력하면<br/>누가 누구에게 보낼지 자동으로 계산해 드려요</div>`;
   } else {
+    const u = settleUnits(t, r, settleByFamily);
     html += `<div class="divider"><span class="divider-label">💸 이렇게 보내면 끝</span><div class="divider-line"></div></div>`;
-    if (!r.transfers.length) {
+    html += `<div class="seg-toggle">
+      <button class="seg ${!settleByFamily?'on':''}" data-settlemode="ind">👤 개인별</button>
+      <button class="seg ${settleByFamily?'on':''}" data-settlemode="fam">👨‍👩‍👧 가족별</button>
+    </div>`;
+    if (settleByFamily && !u.anyFamily)
+      html += `<div style="font-size:11px;color:var(--muted2);margin:0 2px 10px">아직 가족(그룹)을 지정하지 않아 개인별과 동일하게 표시돼요. 위에서 가족 이름을 적어보세요.</div>`;
+    if (!u.transfers.length) {
       html += `<div class="empty" style="padding:16px">이미 딱 맞아요! 보낼 돈이 없습니다 🎉</div>`;
     } else {
-      html += r.transfers.map(tr => `
+      html += u.transfers.map(tr => `
         <div class="transfer-item">
-          <span><b>${esc(memberName(t, tr.from))}</b><span class="transfer-arrow">→</span><b>${esc(memberName(t, tr.to))}</b></span>
+          <span><b>${esc(u.labelOf(tr.from))}</b><span class="transfer-arrow">→</span><b>${esc(u.labelOf(tr.to))}</b></span>
           <span class="transfer-amt">${fmt(tr.amt)}원</span>
         </div>`).join('');
     }
 
-    html += `<div class="divider"><span class="divider-label">👤 멤버별 내역</span><div class="divider-line"></div></div>`;
-    for (const m of t.members) {
-      const b = r.bal[m.id];
-      const diff = b.balance;
+    html += `<div class="divider"><span class="divider-label">${settleByFamily ? '👨‍👩‍👧 가족별 내역' : '👤 멤버별 내역'}</span><div class="divider-line"></div></div>`;
+    for (const unit of u.units) {
+      const diff = unit.balance;
       const cls = diff > 0.5 ? 'plus' : diff < -0.5 ? 'minus' : '';
       const sign = diff > 0.5 ? '+' : '';
-      const isT = m.id === r.treasurerId;
+      const members = settleByFamily && unit.isFamily ? unit.memberIds.map(id => memberName(t, id)).join(', ') : '';
       html += `<div class="settle-member">
         <div>
-          <div class="settle-name">${esc(m.name)}${isT ? '<span class="settle-tag">총무</span>' : ''}</div>
-          <div class="settle-detail">회비 ${fmt(b.dues)} + 결제 ${fmt(b.paid)} · 부담 ${fmt(b.share)}${isT && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
+          <div class="settle-name">${esc(unit.label)}${unit.isTreasurer ? '<span class="settle-tag">총무</span>' : ''}</div>
+          ${members ? `<div class="settle-members">${esc(members)}</div>` : ''}
+          <div class="settle-detail">회비 ${fmt(unit.dues)} + 결제 ${fmt(unit.paid)} · 부담 ${fmt(unit.share)}${unit.isTreasurer && r.heldFund ? ` · 공금보관 ${fmt(r.heldFund)}` : ''}</div>
         </div>
         <span class="settle-bal ${cls}">${sign}${fmt(diff)}원<small>${diff>0.5?'받을 돈':diff<-0.5?'낼 돈':'정산완료'}</small></span>
       </div>`;
@@ -1986,11 +2038,21 @@ function renderSettleTab(t, body) {
   }
   body.innerHTML = html;
 
+  // 개인별 / 가족별 전환
+  body.querySelectorAll('[data-settlemode]').forEach(bt =>
+    bt.addEventListener('click', () => { settleByFamily = bt.dataset.settlemode === 'fam'; render(); }));
   // 총무 선택
   body.querySelectorAll('[data-treasurer]').forEach(c =>
     c.addEventListener('click', () => {
       t.treasurerId = c.dataset.treasurer; save(); syncPush(t); render();
     }));
+  // 가족(그룹) 지정 (입력 중 리렌더 방지 → blur/change에서 저장)
+  body.querySelectorAll('[data-family]').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const m = t.members.find(x => x.id === inp.dataset.family);
+      if (m) { m.family = e.target.value.trim(); save(); syncPush(t); render(); }
+    });
+  });
   // 회비 입력 (숫자 포맷 + 저장)
   body.querySelectorAll('[data-dues]').forEach(inp => {
     inp.addEventListener('input', e => {
@@ -2010,23 +2072,25 @@ function renderSettleTab(t, body) {
 function settlementText(t) {
   const total = t.expenses.reduce((s,e) => s + e.amount, 0);
   const r = computeSettlement(t);
+  const u = settleUnits(t, r, settleByFamily);
+  const byFam = settleByFamily && u.anyFamily;
   const lines = [];
-  lines.push(`🧳 ${t.name} 정산`);
+  lines.push(`🧳 ${t.name} 정산${byFam ? ' (가족별)' : ''}`);
   lines.push(`기간: ${fmtRange(t)}`);
   lines.push(`총 지출: ${fmt(total)}원 (${t.members.length}명)`);
   if (r.fundIn > 0) lines.push(`회비 ${fmt(r.fundIn)}원 · 공금사용 ${fmt(r.fundOut)}원 · 남은공금 ${fmt(r.heldFund)}원`);
   lines.push('');
-  if (r.transfers.length) {
+  if (u.transfers.length) {
     lines.push('💸 이렇게 보내면 정산 끝!');
-    for (const tr of r.transfers)
-      lines.push(`· ${memberName(t, tr.from)} → ${memberName(t, tr.to)} : ${fmt(tr.amt)}원`);
+    for (const tr of u.transfers)
+      lines.push(`· ${u.labelOf(tr.from)} → ${u.labelOf(tr.to)} : ${fmt(tr.amt)}원`);
   } else lines.push('💸 보낼 돈 없음 — 이미 딱 맞아요!');
   lines.push('');
-  lines.push('👤 멤버별 내역');
-  for (const m of t.members) {
-    const b = r.bal[m.id];
-    const isT = m.id === r.treasurerId ? '(총무)' : '';
-    lines.push(`· ${m.name}${isT}: 회비${fmt(b.dues)}+결제${fmt(b.paid)} / 부담${fmt(b.share)} → ${b.balance >= 0 ? '+' : ''}${fmt(b.balance)}`);
+  lines.push(byFam ? '👨‍👩‍👧 가족별 내역' : '👤 멤버별 내역');
+  for (const unit of u.units) {
+    const isT = unit.isTreasurer ? '(총무)' : '';
+    const who = byFam && unit.isFamily ? ` [${unit.memberIds.map(id => memberName(t, id)).join(', ')}]` : '';
+    lines.push(`· ${unit.label}${isT}${who}: 회비${fmt(unit.dues)}+결제${fmt(unit.paid)} / 부담${fmt(unit.share)} → ${unit.balance >= 0 ? '+' : ''}${fmt(unit.balance)}`);
   }
   if (t.cloud) { lines.push(''); lines.push(`🔗 실시간 공유 코드: ${t.code}`); }
   return lines.join('\n');
